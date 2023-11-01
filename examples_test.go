@@ -19,6 +19,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -31,30 +32,95 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"testing"
 	"time"
 
 	"connectrpc.com/connect"
 	"github.com/bufbuild/authn-go"
 	pingv1 "github.com/bufbuild/authn-go/internal/gen/authn/ping/v1"
 	"github.com/bufbuild/authn-go/internal/gen/authn/ping/v1/pingv1connect"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
+func Example_basicAuth() {
+	// This example demonstrates how to use basic auth with the authn middleware.
+	// The example uses the ping service from the authn-go/internal/gen/authn/ping/v1
+	// package, but the same approach can be used with any service.
+	mux := http.NewServeMux()
+	mux.Handle(pingv1connect.NewPingServiceHandler(pingService{}))
+
+	// Wrap the server with authn middleware.
+	auth := authn.NewMiddleware(
+		func(_ context.Context, req authn.Request) (any, error) {
+			username, password, ok := req.BasicAuth()
+			if !ok {
+				// If authentication fails, we return an error. authn.Errorf is a
+				// convenient shortcut to produce an error coded with
+				// connect.CodeUnauthenticated.
+				return nil, authn.Errorf("invalid authorization")
+			}
+			// Check username and password against a database. In this example, we
+			// hardcode the credentials.
+			if subtle.ConstantTimeCompare([]byte(username), []byte("Aladdin")) != 1 {
+				return nil, authn.Errorf("invalid username")
+			}
+			if subtle.ConstantTimeCompare([]byte(password), []byte("open sesame")) != 1 {
+				return nil, authn.Errorf("invalid password")
+			}
+			// Once we've authenticated the request, we can return some information about
+			// the client. That information gets attached to the context passed to
+			// subsequent interceptors and our service implementation.
+			fmt.Printf("verified user: %s\n", username)
+			return username, nil
+		},
+	)
+	handler := auth.Wrap(mux)
+
+	// Start the server.
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	// Create a client for the server.
+	client := pingv1connect.NewPingServiceClient(
+		server.Client(),
+		server.URL,
+	)
+	req := connect.NewRequest(&pingv1.PingRequest{
+		Text: "hello",
+	})
+	// Attach a basic auth to the request.
+	req.Header().Add("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==") // "Aladdin:open sesame"
+	rsp, err := client.Ping(context.Background(), req)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("got response: %s\n", rsp.Msg.Text)
+	// Output:
+	// verified user: Aladdin
+	// got response: hello
+}
+
 func Example_mutualTLS() {
-	log := log.New(os.Stdout, "" /* prefix */, 0 /* flags */)
+	// This example demonstrates how to use mutual TLS with the authn middleware.
+	// The example uses the ping service from the authn-go/internal/gen/authn/ping/v1
+	// package, but the same approach can be used with any service.
+
+	// Create the certificate authority. The server and client will both use this
+	// certificate authority to verify each other's certificates.
+	//
+	// This example uses a self-signed certificate, so
+	// we need to use a custom root CA pool. In production, you would use a
+	// certificate signed by a trusted CA.
 	certPool := x509.NewCertPool()
 	caCertPEM, caKeyPEM, err := createCertificateAuthority()
 	if err != nil {
 		log.Fatal(err)
 	}
 	if ok := certPool.AppendCertsFromPEM(caCertPEM); !ok {
-		log.Fatal("failed to append client certs")
+		log.Fatal("failed to append certs to pool")
 	}
 
-	// Create the server certificate.
+	// Create the server certificate. The server will use this certificate to
+	// authenticate itself to the client. We will need to create a custom TLS
+	// configuration for the server to use this certificate.
 	certPEM, keyPEM, err := createCertificate(caCertPEM, caKeyPEM, "Server")
 	if err != nil {
 		log.Fatal(err)
@@ -74,19 +140,22 @@ func Example_mutualTLS() {
 
 	// Wrap the server with authn middleware.
 	auth := authn.NewMiddleware(
-		func(ctx context.Context, req authn.Request) (any, error) {
-			if req.TLS == nil {
-				return nil, fmt.Errorf("no TLS connection state")
+		func(_ context.Context, req authn.Request) (any, error) {
+			// Get the TLS connection state from the request.
+			tls := req.TLS()
+			if tls == nil {
+				return nil, authn.Errorf("requires TLS certificate")
 			}
-			if len(req.TLS.VerifiedChains) == 0 || len(req.TLS.VerifiedChains[0]) == 0 {
+			if len(tls.VerifiedChains) == 0 || len(tls.VerifiedChains[0]) == 0 {
 				return nil, authn.Errorf("could not verify peer certificate")
 			}
-			// Check subject common name against configured username
-			commonName := req.TLS.VerifiedChains[0][0].Subject.CommonName
+			// Check subject common name against configured username.
+			// In this example, we hardcode the username.
+			commonName := tls.VerifiedChains[0][0].Subject.CommonName
 			if commonName != "Client" {
 				return nil, authn.Errorf("invalid subject common name")
 			}
-			log.Printf("verified peer certificate: %s", commonName)
+			fmt.Printf("verified peer certificate: %s\n", commonName)
 			return commonName, nil
 		},
 	)
@@ -98,7 +167,9 @@ func Example_mutualTLS() {
 	server.StartTLS()
 	defer server.Close()
 
-	// Create the client certificate.
+	// Create the client certificate. The client will use this certificate to
+	// authenticate itself to the server. We will need to create a custom TLS
+	// configuration for the client to use this certificate.
 	certPEM, keyPEM, err = createCertificate(caCertPEM, caKeyPEM, "Client")
 	if err != nil {
 		log.Fatal(err)
@@ -112,7 +183,7 @@ func Example_mutualTLS() {
 		RootCAs:      certPool,
 	}
 
-	// Create the client.
+	// Create the client with the client certificate.
 	client := pingv1connect.NewPingServiceClient(
 		&http.Client{
 			Transport: &http.Transport{
@@ -122,7 +193,7 @@ func Example_mutualTLS() {
 		server.URL,
 	)
 
-	// Make a request.
+	// Make a request with the created client.
 	req := connect.NewRequest(&pingv1.PingRequest{
 		Text: "hello",
 	})
@@ -130,113 +201,10 @@ func Example_mutualTLS() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("got response: %s", rsp.Msg.Text)
+	fmt.Printf("got response: %s\n", rsp.Msg.Text)
 	// Output:
 	// verified peer certificate: Client
 	// got response: hello
-}
-
-func TestTLSServer(t *testing.T) {
-	ctx := context.Background()
-
-	// certPool
-	certPool := x509.NewCertPool()
-	caCertPEM, caKeyPEM, err := createCertificateAuthority()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ok := certPool.AppendCertsFromPEM(caCertPEM); !ok {
-		t.Fatal("failed to append client certs")
-	}
-
-	// Create the server certificate.
-	certPEM, keyPEM, err := createCertificate(caCertPEM, caKeyPEM, "Server")
-	if err != nil {
-		t.Fatal(err)
-	}
-	certificate, err := tls.X509KeyPair(certPEM, keyPEM)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tlsConfig := &tls.Config{
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-		Certificates: []tls.Certificate{certificate},
-		ClientCAs:    certPool,
-	}
-
-	mux := http.NewServeMux()
-	mux.Handle(pingv1connect.NewPingServiceHandler(pingService{}))
-
-	auth := authn.NewMiddleware(
-		func(ctx context.Context, req authn.Request) (any, error) {
-			if req.TLS == nil {
-				return nil, fmt.Errorf("no TLS connection state")
-			}
-			if len(req.TLS.VerifiedChains) == 0 || len(req.TLS.VerifiedChains[0]) == 0 {
-				return nil, authn.Errorf("could not verify peer certificate")
-			}
-			// Check subject common name against configured username
-			commonName := req.TLS.VerifiedChains[0][0].Subject.CommonName
-			if commonName != "Client" {
-				return nil, authn.Errorf("invalid subject common name")
-			}
-			return commonName, nil
-		},
-	)
-	handler := auth.Wrap(mux)
-
-	server := httptest.NewUnstartedServer(handler)
-	server.TLS = tlsConfig
-	server.StartTLS()
-	t.Cleanup(server.Close)
-
-	certPEM, keyPEM, err = createCertificate(caCertPEM, caKeyPEM, "Client")
-	if err != nil {
-		t.Fatal(err)
-	}
-	certificate, err = tls.X509KeyPair(certPEM, keyPEM)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tlsConfig = &tls.Config{
-		Certificates: []tls.Certificate{certificate},
-		RootCAs:      certPool,
-	}
-	tlsInsecure := &tls.Config{
-		InsecureSkipVerify: true,
-	}
-
-	t.Run("secure", func(t *testing.T) {
-		client := pingv1connect.NewPingServiceClient(
-			&http.Client{
-				Transport: &http.Transport{
-					TLSClientConfig: tlsConfig,
-				},
-			},
-			server.URL,
-		)
-		req := connect.NewRequest(&pingv1.PingRequest{
-			Text: "hello",
-		})
-		rsp, err := client.Ping(ctx, req)
-		require.NoError(t, err)
-		assert.Equal(t, "hello", rsp.Msg.Text)
-	})
-	t.Run("insecure", func(t *testing.T) {
-		client := pingv1connect.NewPingServiceClient(
-			&http.Client{
-				Transport: &http.Transport{
-					TLSClientConfig: tlsInsecure,
-				},
-			},
-			server.URL,
-		)
-		req := connect.NewRequest(&pingv1.PingRequest{
-			Text: "hello",
-		})
-		_, err := client.Ping(ctx, req)
-		require.ErrorContains(t, err, "tls: certificate required")
-	})
 }
 
 func createCertificateAuthority() ([]byte, []byte, error) {

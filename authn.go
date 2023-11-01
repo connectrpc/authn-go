@@ -67,18 +67,61 @@ func Errorf(template string, args ...any) *connect.Error {
 
 // Request describes a single RPC invocation.
 type Request struct {
-	// Procedure is the RPC procedure name, in the form "/service/method".
-	Procedure string
-	// ClientAddr is the client address, in IP:port format.
-	ClientAddr string
-	// Protocol is the RPC protocol. It is one of connect.ProtocolConnect,
-	// connect.ProtocolGRPC, or connect.ProtocolGRPCWeb.
-	Protocol string
-	// Header is the HTTP request headers.
-	Header http.Header
-	// TLS is the TLS connection state, if any. It may be nil if the connection
-	// is not using TLS.
-	TLS *tls.ConnectionState
+	request *http.Request
+}
+
+// BasicAuth returns the username and password provided in the request's
+// Authorization header, if any.
+func (r Request) BasicAuth() (username string, password string, ok bool) {
+	return r.request.BasicAuth()
+}
+
+// Procedure returns the RPC procedure name, in the form "/service/method".
+func (r Request) Procedure() string {
+	path := strings.TrimSuffix(r.request.URL.Path, "/")
+	ultimate := strings.LastIndex(path, "/")
+	if ultimate < 0 {
+		return ""
+	}
+	penultimate := strings.LastIndex(path[:ultimate], "/")
+	if penultimate < 0 {
+		return ""
+	}
+	procedure := path[penultimate:]
+	if len(procedure) < 4 { // two slashes + service + method
+		return ""
+	}
+	return procedure
+}
+
+// ClientAddr returns the client address, in IP:port format.
+func (r Request) ClientAddr() string {
+	return r.request.RemoteAddr
+}
+
+// Protocol returns the RPC protocol. It is one of connect.ProtocolConnect,
+// connect.ProtocolGRPC, or connect.ProtocolGRPCWeb.
+func (r Request) Protocol() string {
+	ct := r.request.Header.Get("Content-Type")
+	switch {
+	case strings.HasPrefix(ct, "application/grpc-web"):
+		return connect.ProtocolGRPCWeb
+	case strings.HasPrefix(ct, "application/grpc"):
+		return connect.ProtocolGRPC
+	default:
+		return connect.ProtocolConnect
+	}
+}
+
+// Header returns the HTTP request headers.
+func (r Request) Header() http.Header {
+	return r.request.Header
+}
+
+// TLS returns the TLS connection state, if any. It may be nil if the connection
+// is not using TLS.
+func (r Request) TLS() *tls.ConnectionState {
+	return r.request.TLS
 }
 
 // Middleware is server-side HTTP middleware that authenticates RPC requests.
@@ -120,13 +163,7 @@ func (m *Middleware) Wrap(handler http.Handler) http.Handler {
 			return // not an RPC request
 		}
 		ctx := request.Context()
-		info, err := m.auth(ctx, Request{
-			Procedure:  procedureFromHTTP(request),
-			ClientAddr: request.RemoteAddr,
-			Protocol:   protocolFromHTTP(request),
-			Header:     request.Header,
-			TLS:        request.TLS,
-		})
+		info, err := m.auth(ctx, Request{request: request})
 		if err != nil {
 			m.errW.Write(writer, request, err)
 			return
@@ -137,33 +174,4 @@ func (m *Middleware) Wrap(handler http.Handler) http.Handler {
 		}
 		handler.ServeHTTP(writer, request)
 	})
-}
-
-func procedureFromHTTP(r *http.Request) string {
-	path := strings.TrimSuffix(r.URL.Path, "/")
-	ultimate := strings.LastIndex(path, "/")
-	if ultimate < 0 {
-		return ""
-	}
-	penultimate := strings.LastIndex(path[:ultimate], "/")
-	if penultimate < 0 {
-		return ""
-	}
-	procedure := path[penultimate:]
-	if len(procedure) < 4 { // two slashes + service + method
-		return ""
-	}
-	return procedure
-}
-
-func protocolFromHTTP(r *http.Request) string {
-	ct := r.Header.Get("Content-Type")
-	switch {
-	case strings.HasPrefix(ct, "application/grpc-web"):
-		return connect.ProtocolGRPCWeb
-	case strings.HasPrefix(ct, "application/grpc"):
-		return connect.ProtocolGRPC
-	default:
-		return connect.ProtocolConnect
-	}
 }

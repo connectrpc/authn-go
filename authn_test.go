@@ -91,7 +91,7 @@ func assertInfo(tb testing.TB, ctx context.Context) {
 }
 
 func authenticate(ctx context.Context, req authn.Request) (any, error) {
-	parts := strings.SplitN(req.Header.Get("Authorization"), " ", 2)
+	parts := strings.SplitN(req.Header().Get("Authorization"), " ", 2)
 	if len(parts) < 2 || parts[0] != "Bearer" {
 		err := authn.Errorf("expected Bearer authentication scheme")
 		err.Meta().Set("WWW-Authenticate", "Bearer")
