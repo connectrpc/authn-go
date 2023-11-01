@@ -32,18 +32,20 @@ const (
 )
 
 func TestMiddleware(t *testing.T) {
+	t.Parallel()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Check-Info") != "" {
-			assertInfo(t, r.Context())
+			assertInfo(r.Context(), t)
 		}
-		io.WriteString(w, "ok")
+		_, _ = io.WriteString(w, "ok")
 	})
 	handler := authn.NewMiddleware(authenticate).Wrap(mux)
 	server := httptest.NewServer(handler)
 
 	assertResponse := func(headers http.Header, expectCode int) {
-		req, err := http.NewRequest(
+		req, err := http.NewRequestWithContext(
+			context.Background(),
 			http.MethodPost,
 			server.URL+"/empty.v1/GetEmpty",
 			strings.NewReader("{}"),
@@ -57,6 +59,7 @@ func TestMiddleware(t *testing.T) {
 		res, err := server.Client().Do(req)
 		assert.Nil(t, err)
 		assert.Equal(t, res.StatusCode, expectCode)
+		assert.Nil(t, res.Body.Close())
 	}
 	// Middleware should ignore non-RPC requests.
 	assertResponse(http.Header{}, 200)
@@ -76,7 +79,7 @@ func TestMiddleware(t *testing.T) {
 	)
 }
 
-func assertInfo(tb testing.TB, ctx context.Context) {
+func assertInfo(ctx context.Context, tb testing.TB) {
 	tb.Helper()
 	info := authn.GetInfo(ctx)
 	if info == nil {
@@ -90,7 +93,7 @@ func assertInfo(tb testing.TB, ctx context.Context) {
 	}
 }
 
-func authenticate(ctx context.Context, req authn.Request) (any, error) {
+func authenticate(_ context.Context, req authn.Request) (any, error) {
 	parts := strings.SplitN(req.Header().Get("Authorization"), " ", 2)
 	if len(parts) < 2 || parts[0] != "Bearer" {
 		err := authn.Errorf("expected Bearer authentication scheme")

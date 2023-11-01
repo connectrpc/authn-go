@@ -23,6 +23,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -87,7 +88,8 @@ func Example_basicAuth() {
 		Text: "hello",
 	})
 	// Attach a basic auth to the request.
-	req.Header().Add("Authorization", "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==") // "Aladdin:open sesame"
+	authToken := base64.StdEncoding.EncodeToString([]byte("Aladdin:open sesame"))
+	req.Header().Add("Authorization", "Basic "+authToken)
 	rsp, err := client.Ping(context.Background(), req)
 	if err != nil {
 		log.Fatal(err)
@@ -133,6 +135,7 @@ func Example_mutualTLS() {
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		Certificates: []tls.Certificate{certificate},
 		ClientCAs:    certPool,
+		MinVersion:   tls.VersionTLS12,
 	}
 
 	mux := http.NewServeMux()
@@ -181,6 +184,7 @@ func Example_mutualTLS() {
 	tlsClientConfig := &tls.Config{
 		Certificates: []tls.Certificate{certificate},
 		RootCAs:      certPool,
+		MinVersion:   tls.VersionTLS12,
 	}
 
 	// Create the client with the client certificate.
@@ -208,7 +212,7 @@ func Example_mutualTLS() {
 }
 
 func createCertificateAuthority() ([]byte, []byte, error) {
-	ca := &x509.Certificate{
+	caCert := &x509.Certificate{
 		SerialNumber: big.NewInt(2021),
 		Subject: pkix.Name{
 			Organization: []string{"Acme Co"},
@@ -224,7 +228,7 @@ func createCertificateAuthority() ([]byte, []byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	caBytes, err := x509.CreateCertificate(rand.Reader, ca, ca, &caPrivKey.PublicKey, caPrivKey)
+	caBytes, err := x509.CreateCertificate(rand.Reader, caCert, caCert, &caPrivKey.PublicKey, caPrivKey)
 	if err != nil {
 		return nil, nil, err
 	}

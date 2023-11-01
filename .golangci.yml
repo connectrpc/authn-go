@@ -46,8 +46,13 @@ linters:
     - varcheck          # abandoned
     - wrapcheck         # don't _always_ need to wrap errors
     - wsl               # generous whitespace violates house style
+    - nonamedreturns    # named returns help document return types
 issues:
   exclude:
     # Don't ban use of fmt.Errorf to create new errors, but the remaining
     # checks from err113 are useful.
     - "err113: do not define dynamic errors.*"
+  exclude-rules:
+    # We need to init a global in-mem HTTP server for testable examples.
+    - path: examples_test.go
+      linters: [gocritic, gochecknoglobals, gosec, exhaustruct]

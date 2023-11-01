@@ -165,7 +165,7 @@ func (m *Middleware) Wrap(handler http.Handler) http.Handler {
 		ctx := request.Context()
 		info, err := m.auth(ctx, Request{request: request})
 		if err != nil {
-			m.errW.Write(writer, request, err)
+			_ = m.errW.Write(writer, request, err)
 			return
 		}
 		if info != nil {
