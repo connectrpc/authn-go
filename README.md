@@ -1,11 +1,8 @@
 authn-go
 ===============
 
-TODO
+Authn provides authentication middleware for [connect](https://connectrpc.com/). It is designed to work with any authentication scheme, including HTTP Basic Authentication, OAuth2, and custom schemes. It covers both Unary and Streaming RPCs and works with both gRPC and Connect protocols.
 
-## Example
-
-TODO
 
 ## Status: Alpha
 
