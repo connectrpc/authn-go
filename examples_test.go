@@ -60,10 +60,10 @@ func Example_basicAuth() {
 			}
 			// Check username and password against a database. In this example, we
 			// hardcode the credentials.
-			if subtle.ConstantTimeCompare([]byte(username), []byte("Aladdin")) != 1 {
+			if subtle.ConstantTimeCompare([]byte(username), []byte("Ali Baba")) != 1 {
 				return nil, authn.Errorf("invalid username")
 			}
-			if subtle.ConstantTimeCompare([]byte(password), []byte("open sesame")) != 1 {
+			if subtle.ConstantTimeCompare([]byte(password), []byte("opensesame")) != 1 {
 				return nil, authn.Errorf("invalid password")
 			}
 			// Once we've authenticated the request, we can return some information about
@@ -87,8 +87,8 @@ func Example_basicAuth() {
 	req := connect.NewRequest(&pingv1.PingRequest{
 		Text: "hello",
 	})
-	// Attach a basic auth to the request.
-	authToken := base64.StdEncoding.EncodeToString([]byte("Aladdin:open sesame"))
+	// Attach a basic auth authorization header to the request.
+	authToken := base64.StdEncoding.EncodeToString([]byte("Ali Baba:opensesame"))
 	req.Header().Add("Authorization", "Basic "+authToken)
 	rsp, err := client.Ping(context.Background(), req)
 	if err != nil {
@@ -96,7 +96,7 @@ func Example_basicAuth() {
 	}
 	fmt.Printf("got response: %s\n", rsp.Msg.Text)
 	// Output:
-	// verified user: Aladdin
+	// verified user: Ali Baba
 	// got response: hello
 }
 
