@@ -76,20 +76,22 @@ func (r Request) BasicAuth() (username string, password string, ok bool) {
 	return r.request.BasicAuth()
 }
 
-// Procedure returns the RPC procedure name, in the form "/service/method".
+// Procedure returns the RPC procedure name, in the form "/service/method". If
+// the request path does not contain a procedure name, the entire path is
+// returned.
 func (r Request) Procedure() string {
 	path := strings.TrimSuffix(r.request.URL.Path, "/")
 	ultimate := strings.LastIndex(path, "/")
 	if ultimate < 0 {
-		return ""
+		return r.request.URL.Path
 	}
 	penultimate := strings.LastIndex(path[:ultimate], "/")
 	if penultimate < 0 {
-		return ""
+		return r.request.URL.Path
 	}
 	procedure := path[penultimate:]
 	if len(procedure) < 4 { // two slashes + service + method
-		return ""
+		return r.request.URL.Path
 	}
 	return procedure
 }
