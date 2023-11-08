@@ -15,7 +15,6 @@
 package authn_test
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -232,21 +231,15 @@ func createCertificateAuthority() ([]byte, []byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	caPEM := new(bytes.Buffer)
-	if err := pem.Encode(caPEM, &pem.Block{
+	caPEM := pem.EncodeToMemory(&pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: caBytes,
-	}); err != nil {
-		return nil, nil, err
-	}
-	caPrivKeyPEM := new(bytes.Buffer)
-	if err := pem.Encode(caPrivKeyPEM, &pem.Block{
+	})
+	caPrivKeyPEM := pem.EncodeToMemory(&pem.Block{
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(caPrivKey),
-	}); err != nil {
-		return nil, nil, err
-	}
-	return caPEM.Bytes(), caPrivKeyPEM.Bytes(), nil
+	})
+	return caPEM, caPrivKeyPEM, nil
 }
 
 func createCertificate(caCertPEM, caKeyPEM []byte, commonName string) ([]byte, []byte, error) {
@@ -286,21 +279,15 @@ func createCertificate(caCertPEM, caKeyPEM []byte, commonName string) ([]byte, [
 	if err != nil {
 		return nil, nil, err
 	}
-	certPEM := new(bytes.Buffer)
-	if err := pem.Encode(certPEM, &pem.Block{
+	certPEM := pem.EncodeToMemory(&pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: certBytes,
-	}); err != nil {
-		return nil, nil, err
-	}
-	certPrivKeyPEM := new(bytes.Buffer)
-	if err := pem.Encode(certPrivKeyPEM, &pem.Block{
+	})
+	certPrivKeyPEM := pem.EncodeToMemory(&pem.Block{
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(certPrivKey),
-	}); err != nil {
-		return nil, nil, err
-	}
-	return certPEM.Bytes(), certPrivKeyPEM.Bytes(), nil
+	})
+	return certPEM, certPrivKeyPEM, nil
 }
 
 type pingService struct{}
