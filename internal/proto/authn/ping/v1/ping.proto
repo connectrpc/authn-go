@@ -1,0 +1,36 @@
+// Copyright 2023 Buf Technologies, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// The canonical location for this file is
+// https://github.com/bufbuild/authn-go/blob/main/internal/proto/authn/ping/v1/ping.proto.
+syntax = "proto3";
+
+// The authn.ping.v1 package contains a ping service designed to test the
+// authn-go implementation.
+package authn.ping.v1;
+
+message PingRequest { string text = 1; }
+message PingResponse { string text = 1; }
+message PingStreamRequest { string text = 1; }
+message PingStreamResponse { string text = 1; }
+
+service PingService {
+  // Ping is a unary RPC that returns the same text that was sent.
+  rpc Ping(PingRequest) returns (PingResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // PingStream is a bidirectional stream of pings.
+  rpc PingStream(stream PingStreamRequest) returns (stream PingStreamResponse) {
+  }
+}
