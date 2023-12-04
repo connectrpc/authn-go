@@ -35,7 +35,9 @@ build: generate ## Build all packages
 	go build ./...
 
 .PHONY: generate
-generate: $(BIN)/license-header ## Regenerate code and licenses
+generate: $(BIN)/buf $(BIN)/protoc-gen-go $(BIN)/protoc-gen-connect-go $(BIN)/license-header ## Regenerate code and licenses
+	rm -rf internal/gen
+	PATH="$(abspath $(BIN))" buf generate
 	license-header \
 		--license-type apache \
 		--copyright-holder "Buf Technologies, Inc." \
@@ -45,10 +47,13 @@ generate: $(BIN)/license-header ## Regenerate code and licenses
 lint: $(BIN)/golangci-lint ## Lint
 	go vet ./...
 	golangci-lint run --modules-download-mode=readonly --timeout=3m0s
+	buf lint
+	buf format -d --exit-code
 
 .PHONY: lintfix
 lintfix: $(BIN)/golangci-lint ## Automatically fix some lint errors
 	golangci-lint run --fix --modules-download-mode=readonly --timeout=3m0s
+	buf format -w
 
 .PHONY: install
 install: ## Install all binaries
@@ -56,8 +61,7 @@ install: ## Install all binaries
 
 .PHONY: upgrade
 upgrade: ## Upgrade dependencies
-	go get -u -t ./...
-	go mod tidy -v
+	go get -u -t ./... && go mod tidy -v
 
 .PHONY: checkgenerate
 checkgenerate:
@@ -66,8 +70,22 @@ checkgenerate:
 
 $(BIN)/license-header: Makefile
 	@mkdir -p $(@D)
-	go install github.com/bufbuild/buf/private/pkg/licenseheader/cmd/license-header@v1.26.1
+	go install github.com/bufbuild/buf/private/pkg/licenseheader/cmd/license-header@v1.27.2
 
 $(BIN)/golangci-lint: Makefile
 	@mkdir -p $(@D)
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.54.1
+
+$(BIN)/buf: Makefile
+	@mkdir -p $(@D)
+	go install github.com/bufbuild/buf/cmd/buf@v1.27.2
+
+$(BIN)/protoc-gen-go: Makefile go.mod
+	@mkdir -p $(@D)
+	@# The version of protoc-gen-go is determined by the version in go.mod
+	go install google.golang.org/protobuf/cmd/protoc-gen-go
+
+$(BIN)/protoc-gen-connect-go: Makefile go.mod
+	@mkdir -p $(@D)
+	@# The version of protoc-gen-connect-go is determined by the version in go.mod
+	go install connectrpc.com/connect/cmd/protoc-gen-connect-go
