@@ -1,7 +1,9 @@
-authn-go
-===============
+authn
+=====
 
-Authn provides authentication middleware for [connect](https://connectrpc.com/). It is designed to work with any authentication scheme, including HTTP Basic Authentication, OAuth2, and custom schemes. It covers both Unary and Streaming RPCs and works with both gRPC and Connect protocols.
+`connectrpc.com/authn` provides authentication middleware for [connect](https://connectrpc.com/).
+It's designed to work with any authentication scheme, including HTTP Basic Authentication, OAuth2, and custom schemes.
+It covers both unary and streaming RPCs, and works with both the gRPC and Connect protocols.
 
 ## Status: Alpha
 
@@ -9,6 +11,5 @@ This project is currently in alpha. The API should be considered unstable and li
 
 ## Legal
 
-Offered under the [Apache 2 license][license].
+Offered under the [Apache 2 license][LICENSE].
 
-[license]: https://github.com/bufbuild/authn-go/blob/main/LICENSE

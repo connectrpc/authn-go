@@ -34,16 +34,17 @@ import (
 	"net/http/httptest"
 	"time"
 
+	"connectrpc.com/authn"
+	pingv1 "connectrpc.com/authn/internal/gen/authn/ping/v1"
+	"connectrpc.com/authn/internal/gen/authn/ping/v1/pingv1connect"
 	"connectrpc.com/connect"
-	"github.com/bufbuild/authn-go"
-	pingv1 "github.com/bufbuild/authn-go/internal/gen/authn/ping/v1"
-	"github.com/bufbuild/authn-go/internal/gen/authn/ping/v1/pingv1connect"
 )
 
 func Example_basicAuth() {
 	// This example demonstrates how to use basic auth with the authn middleware.
-	// The example uses the ping service from the authn-go/internal/gen/authn/ping/v1
-	// package, but the same approach can be used with any service.
+	// The example uses the ping service from the
+	// connectrpc.com/authn/internal/gen/authn/ping/v1 package, but the same
+	// approach can be used with any service.
 	mux := http.NewServeMux()
 	mux.Handle(pingv1connect.NewPingServiceHandler(pingService{}))
 
@@ -101,8 +102,9 @@ func Example_basicAuth() {
 
 func Example_mutualTLS() {
 	// This example demonstrates how to use mutual TLS with the authn middleware.
-	// The example uses the ping service from the authn-go/internal/gen/authn/ping/v1
-	// package, but the same approach can be used with any service.
+	// The example uses the ping service from the
+	// connectrpc.com/authn/internal/gen/authn/ping/v1 package, but the same
+	// approach can be used with any service.
 
 	// Create the certificate authority. The server and client will both use this
 	// certificate authority to verify each other's certificates.

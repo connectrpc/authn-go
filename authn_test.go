@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bufbuild/authn-go"
+	"connectrpc.com/authn"
 	"github.com/stretchr/testify/assert"
 )
 
