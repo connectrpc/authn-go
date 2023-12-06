@@ -82,6 +82,18 @@ func (r Request) BasicAuth() (username string, password string, ok bool) {
 	return r.request.BasicAuth()
 }
 
+// Cookies parses and returns the HTTP cookies sent with the request, if any.
+func (r Request) Cookies() []*http.Cookie {
+	return r.request.Cookies()
+}
+
+// Cookie returns the named cookie provided in the request or
+// [http.ErrNoCookie] if not found. If multiple cookies match the given name,
+// only one cookie will be returned.
+func (r Request) Cookie(name string) (*http.Cookie, error) {
+	return r.request.Cookie(name)
+}
+
 // Procedure returns the RPC procedure name, in the form "/service/method". If
 // the request path does not contain a procedure name, the entire path is
 // returned.
