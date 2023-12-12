@@ -18,6 +18,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -48,10 +49,7 @@ func Example_basicAuth() {
 		if !ok {
 			return nil, authn.Errorf("invalid authorization")
 		}
-		if username != "Ali Baba" { // hardcode example credentials
-			return nil, authn.Errorf("invalid username %q", username)
-		}
-		if password != "opensesame" {
+		if !equal(password, "open-sesame") {
 			return nil, authn.Errorf("invalid password")
 		}
 		// The request is authenticated! We can propagate the authenticated user to
@@ -77,7 +75,7 @@ func Example_basicAuth() {
 	req := connect.NewRequest(&pingv1.PingRequest{})
 	req.Header().Set(
 		"Authorization",
-		"Basic "+base64.StdEncoding.EncodeToString([]byte("Ali Baba:opensesame")),
+		"Basic "+base64.StdEncoding.EncodeToString([]byte("Aladdin:open-sesame")),
 	)
 	_, err := client.Ping(context.Background(), req)
 
@@ -90,7 +88,7 @@ func Example_basicAuth() {
 	}
 
 	// Output:
-	// authenticated request from Ali Baba
+	// authenticated request from Aladdin
 	// client received response
 }
 
@@ -106,7 +104,7 @@ func Example_mutualTLS() {
 			return nil, authn.Errorf("could not verify peer certificate")
 		}
 		name := tls.VerifiedChains[0][0].Subject.CommonName
-		if name != "Ali Baba" { // hardcode example credentials
+		if !equal(name, "Aladdin") { // hardcode example credentials
 			return nil, authn.Errorf("invalid subject common name %q", name)
 		}
 		// The request is authenticated! We can propagate the authenticated user to
@@ -125,7 +123,7 @@ func Example_mutualTLS() {
 	// Finally, we wrap the handler with our middleware and start the server.
 	// Creating server and client TLS configurations is particularly verbose in
 	// examples, where we need to set up a complete self-signed chain of trust.
-	clientTLS, serverTLS, err := newTLSConfigs("Ali Baba", "Cave of Wonders")
+	clientTLS, serverTLS, err := newTLSConfigs("Aladdin", "Cave of Wonders")
 	if err != nil {
 		fmt.Printf("error creating TLS configs: %v\n", err)
 		return
@@ -156,7 +154,7 @@ func Example_mutualTLS() {
 	}
 
 	// Output:
-	// authenticated request from Ali Baba
+	// authenticated request from Aladdin
 	// client received response
 }
 
@@ -269,4 +267,9 @@ func newCertificate(caCertPEM, caKeyPEM []byte, commonName string) (tls.Certific
 		Bytes: x509.MarshalPKCS1PrivateKey(certPrivKey),
 	})
 	return tls.X509KeyPair(certPEM, certPrivKeyPEM)
+}
+
+func equal(left, right string) bool {
+	// Using subtle prevents some timing attacks.
+	return subtle.ConstantTimeCompare([]byte(left), []byte(right)) == 1
 }

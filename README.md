@@ -28,6 +28,7 @@ package main
 
 import (
   "context"
+  "crypto/subtle"
   "net/http"
 
   "connectrpc.com/authn"
@@ -39,16 +40,18 @@ func authenticate(_ context.Context, req authn.Request) (any, error) {
   if !ok {
     return nil, authn.Errorf("invalid authorization")
   }
-  if username != "Ali Baba" {
-    return nil, authn.Errorf("invalid username %q", username)
-  }
-  if password != "opensesame" {
+  if !equal(password, "open-sesame") {
     return nil, authn.Errorf("invalid password")
   }
   // The request is authenticated! We can propagate the authenticated user to
   // Connect interceptors and services by returning it: the middleware we're
   // about to construct will attach it to the context automatically.
   return username, nil
+}
+
+func equal(left, right string) bool {
+  // Using subtle prevents some timing attacks.
+  return subtle.ConstantTimeCompare([]byte(left), []byte(right)) == 1
 }
 
 func main() {
