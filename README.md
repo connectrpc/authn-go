@@ -94,6 +94,7 @@ Offered under the [Apache 2 license][LICENSE].
 [blog]: https://buf.build/blog/connect-a-better-grpc
 [conformance]: https://github.com/connectrpc/conformance
 [connect-es]: https://github.com/connectrpc/connect-es
+[connect-go]: https://github.com/connectrpc/connect-go
 [cors]: https://github.com/connectrpc/cors-go
 [docs]: https://connectrpc.com
 [examples-go]: https://github.com/connectrpc/examples-go
