@@ -95,7 +95,7 @@ func Example_basicAuth() {
 }
 
 func Example_mutualTLS() {
-	// This example demonstrates how to use this package with mutual TLS.
+	// This example shows how to use this package with mutual TLS.
 	// First, we define our authentication logic and use it to build middleware.
 	authenticate := func(_ context.Context, req authn.Request) (any, error) {
 		tls := req.TLS()
