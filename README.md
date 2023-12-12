@@ -62,8 +62,8 @@ func main() {
 }
 ```
 
-Cookie- and token-based authentication is similar. mTLS is a bit more complex,
-but [pkg.go.dev][godoc] includes a complete example.
+Cookie and token-based authentication is similar. Mutual TLS is a bit more
+complex, but [pkg.go.dev][godoc] includes a complete example.
 
 ## Ecosystem
 
