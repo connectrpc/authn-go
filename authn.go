@@ -146,13 +146,11 @@ func (r Request) TLS() *tls.ConnectionState {
 
 // Middleware is server-side HTTP middleware that authenticates RPC requests.
 // In addition to rejecting unauthenticated requests, it can optionally attach
-// arbitrary information about the authenticated identity to the context. Any
-// non-RPC requests (as determined by their Content-Type) are forwarded
-// directly to the wrapped handler without authentication.
+// arbitrary information about the authenticated identity to the context.
 //
-// Middleware operates at a lower level than Connect interceptors, which
-// improves resiliency: the server doesn't decompress and unmarshal the request
-// until the caller has been authenticated.
+// Middleware operates at a lower level than Connect interceptors, so the
+// server doesn't decompress and unmarshal the request until the caller has
+// been authenticated.
 type Middleware struct {
 	auth AuthFunc
 	errW *connect.ErrorWriter
@@ -163,9 +161,8 @@ type Middleware struct {
 // any) will be attached to the context. Subsequent HTTP middleware, all RPC
 // interceptors, and application code may access it with [GetInfo].
 //
-// In order to properly identify RPC requests and marshal errors, applications
-// must pass NewMiddleware the same handler options used when constructing
-// Connect handlers.
+// In order to properly marshal errors, applications must pass NewMiddleware
+// the same handler options used when constructing Connect handlers.
 func NewMiddleware(auth AuthFunc, opts ...connect.HandlerOption) *Middleware {
 	return &Middleware{
 		auth: auth,
@@ -173,18 +170,17 @@ func NewMiddleware(auth AuthFunc, opts ...connect.HandlerOption) *Middleware {
 	}
 }
 
-// Wrap returns an HTTP handler that authenticates RPC requests before
-// forwarding them to handler. If handler is not an RPC request, it is forwarded
-// directly, without authentication.
+// Wrap returns an HTTP handler that authenticates requests before forwarding
+// them to handler.
 func (m *Middleware) Wrap(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if !m.errW.IsSupported(request) {
-			handler.ServeHTTP(writer, request)
-			return // not an RPC request
-		}
 		ctx := request.Context()
 		info, err := m.auth(ctx, Request{request: request})
 		if err != nil {
+			if request.Header.Get("Content-Type") == "" {
+				// Default to Connect-style JSON, which also covers unary GETs.
+				request.Header.Set("Content-Type", "application/json")
+			}
 			_ = m.errW.Write(writer, request, err)
 			return
 		}
