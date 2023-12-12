@@ -21,12 +21,15 @@ package authn.ping.v1;
 message PingRequest {
   string text = 1;
 }
+
 message PingResponse {
   string text = 1;
 }
+
 message PingStreamRequest {
   string text = 1;
 }
+
 message PingStreamResponse {
   string text = 1;
 }
