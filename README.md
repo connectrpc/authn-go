@@ -27,37 +27,37 @@ package, we can build a server and wrap it with some basic authentication:
 package main
 
 import (
-	"context"
-	"net/http"
+  "context"
+  "net/http"
 
-	"connectrpc.com/authn"
-	"connectrpc.com/authn/internal/gen/authn/ping/v1/pingv1connect"
+  "connectrpc.com/authn"
+  "connectrpc.com/authn/internal/gen/authn/ping/v1/pingv1connect"
 )
 
+func authenticate(_ context.Context, req authn.Request) (any, error) {
+  username, password, ok := req.BasicAuth()
+  if !ok {
+    return nil, authn.Errorf("invalid authorization")
+  }
+  if username != "Ali Baba" {
+    return nil, authn.Errorf("invalid username %q", username)
+  }
+  if password != "opensesame" {
+    return nil, authn.Errorf("invalid password")
+  }
+  // The request is authenticated! We can propagate the authenticated user to
+  // Connect interceptors and services by returning it: the middleware we're
+  // about to construct will attach it to the context automatically.
+  return username, nil
+}
+
 func main() {
-	authenticate := func(_ context.Context, req authn.Request) (any, error) {
-		username, password, ok := req.BasicAuth()
-		if !ok {
-			return nil, authn.Errorf("invalid authorization")
-		}
-		if username != "Ali Baba" {
-			return nil, authn.Errorf("invalid username %q", username)
-		}
-		if password != "opensesame" {
-			return nil, authn.Errorf("invalid password")
-		}
-		// The request is authenticated! We can propagate the authenticated user to
-		// Connect interceptors and services by returning it: the middleware we're
-		// about to construct will attach it to the context automatically.
-		return username, nil
-	}
-	middleware := authn.NewMiddleware(authenticate)
+  mux := http.NewServeMux()
+  service := &pingv1connect.UnimplementedPingServiceHandler{}
+  mux.Handle(pingv1connect.NewPingServiceHandler(service))
 
-	mux := http.NewServeMux()
-	service := &pingv1connect.UnimplementedPingServiceHandler{}
-	mux.Handle(pingv1connect.NewPingServiceHandler(service))
-
-	handler := middleware.Wrap(mux)
+  middleware := authn.NewMiddleware(authenticate)
+  handler := middleware.Wrap(mux)
   http.ListenAndServe("localhost:8080", handler)
 }
 ```
