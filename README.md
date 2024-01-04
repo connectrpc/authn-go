@@ -91,7 +91,7 @@ make breaking changes in the 1.x series of releases.
 
 ## Legal
 
-Offered under the [Apache 2 license][LICENSE].
+Offered under the [Apache 2 license][license].
 
 [Getting Started]: https://connectrpc.com/docs/go/getting-started
 [blog]: https://buf.build/blog/connect-a-better-grpc
@@ -105,5 +105,6 @@ Offered under the [Apache 2 license][LICENSE].
 [godoc]: https://pkg.go.dev/connectrpc.com/authn
 [grpchealth]: https://github.com/connectrpc/grpchealth-go
 [grpcreflect]: https://github.com/connectrpc/grpcreflect-go
+[license]: https://github.com/connectrpc/authn-go/blob/main/LICENSE
 [protocol]: https://connectrpc.com/docs/protocol
 [slack]: https://buf.build/links/slack
