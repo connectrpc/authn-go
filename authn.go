@@ -177,10 +177,6 @@ func (m *Middleware) Wrap(handler http.Handler) http.Handler {
 		ctx := request.Context()
 		info, err := m.auth(ctx, Request{request: request})
 		if err != nil {
-			if request.Header.Get("Content-Type") == "" {
-				// Default to Connect-style JSON, which also covers unary GETs.
-				request.Header.Set("Content-Type", "application/json")
-			}
 			_ = m.errW.Write(writer, request, err)
 			return
 		}
