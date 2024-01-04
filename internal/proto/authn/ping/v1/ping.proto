@@ -13,17 +13,26 @@
 // limitations under the License.
 
 // The canonical location for this file is
-// https://github.com/bufbuild/authn-go/blob/main/internal/proto/authn/ping/v1/ping.proto.
+// https://github.com/connectrpc/authn-go/blob/main/internal/proto/authn/ping/v1/ping.proto.
 syntax = "proto3";
 
-// The authn.ping.v1 package contains a ping service designed to test the
-// authn-go implementation.
 package authn.ping.v1;
 
-message PingRequest { string text = 1; }
-message PingResponse { string text = 1; }
-message PingStreamRequest { string text = 1; }
-message PingStreamResponse { string text = 1; }
+message PingRequest {
+  string text = 1;
+}
+
+message PingResponse {
+  string text = 1;
+}
+
+message PingStreamRequest {
+  string text = 1;
+}
+
+message PingStreamResponse {
+  string text = 1;
+}
 
 service PingService {
   // Ping is a unary RPC that returns the same text that was sent.
@@ -31,6 +40,5 @@ service PingService {
     option idempotency_level = NO_SIDE_EFFECTS;
   }
   // PingStream is a bidirectional stream of pings.
-  rpc PingStream(stream PingStreamRequest) returns (stream PingStreamResponse) {
-  }
+  rpc PingStream(stream PingStreamRequest) returns (stream PingStreamResponse) {}
 }

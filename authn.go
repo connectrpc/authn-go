@@ -34,12 +34,18 @@ const infoKey key = iota
 // [Errorf], but any error will do.
 //
 // If requests are successfully authenticated, the authentication function may
-// return some information about the authenticated caller (or nil).
+// return some information about the authenticated caller (or nil). If non-nil,
+// the information is automatically attached to the context using [SetInfo].
+//
 // Implementations must be safe to call concurrently.
 type AuthFunc func(ctx context.Context, req Request) (any, error)
 
 // SetInfo attaches authentication information to the context. It's often
 // useful in tests.
+//
+// [AuthFunc] implementations do not need to call SetInfo explicitly. Any
+// returned authentication information is automatically added to the context by
+// [Middleware].
 func SetInfo(ctx context.Context, info any) context.Context {
 	if info == nil {
 		return ctx
@@ -76,6 +82,18 @@ func (r Request) BasicAuth() (username string, password string, ok bool) {
 	return r.request.BasicAuth()
 }
 
+// Cookies parses and returns the HTTP cookies sent with the request, if any.
+func (r Request) Cookies() []*http.Cookie {
+	return r.request.Cookies()
+}
+
+// Cookie returns the named cookie provided in the request or
+// [http.ErrNoCookie] if not found. If multiple cookies match the given name,
+// only one cookie will be returned.
+func (r Request) Cookie(name string) (*http.Cookie, error) {
+	return r.request.Cookie(name)
+}
+
 // Procedure returns the RPC procedure name, in the form "/service/method". If
 // the request path does not contain a procedure name, the entire path is
 // returned.
@@ -101,8 +119,8 @@ func (r Request) ClientAddr() string {
 	return r.request.RemoteAddr
 }
 
-// Protocol returns the RPC protocol. It is one of connect.ProtocolConnect,
-// connect.ProtocolGRPC, or connect.ProtocolGRPCWeb.
+// Protocol returns the RPC protocol. It is one of [connect.ProtocolConnect],
+// [connect.ProtocolGRPC], or [connect.ProtocolGRPCWeb].
 func (r Request) Protocol() string {
 	ct := r.request.Header.Get("Content-Type")
 	switch {
@@ -128,13 +146,11 @@ func (r Request) TLS() *tls.ConnectionState {
 
 // Middleware is server-side HTTP middleware that authenticates RPC requests.
 // In addition to rejecting unauthenticated requests, it can optionally attach
-// arbitrary information to the context of authenticated requests. Any non-RPC
-// requests (as determined by their Content-Type) are forwarded directly to the
-// wrapped handler without authentication.
+// arbitrary information about the authenticated identity to the context.
 //
-// Middleware operates at a lower level than [Interceptor]. For most
-// applications, Middleware is preferable because it defers decompressing and
-// unmarshaling the request until after the caller has been authenticated.
+// Middleware operates at a lower level than Connect interceptors, so the
+// server doesn't decompress and unmarshal the request until the caller has
+// been authenticated.
 type Middleware struct {
 	auth AuthFunc
 	errW *connect.ErrorWriter
@@ -145,9 +161,8 @@ type Middleware struct {
 // any) will be attached to the context. Subsequent HTTP middleware, all RPC
 // interceptors, and application code may access it with [GetInfo].
 //
-// In order to properly identify RPC requests and marshal errors, applications
-// must pass NewMiddleware the same handler options used when constructing
-// Connect handlers.
+// In order to properly marshal errors, applications must pass NewMiddleware
+// the same handler options used when constructing Connect handlers.
 func NewMiddleware(auth AuthFunc, opts ...connect.HandlerOption) *Middleware {
 	return &Middleware{
 		auth: auth,
@@ -155,15 +170,10 @@ func NewMiddleware(auth AuthFunc, opts ...connect.HandlerOption) *Middleware {
 	}
 }
 
-// Wrap returns an HTTP handler that authenticates RPC requests before
-// forwarding them to handler. If handler is not an RPC request, it is forwarded
-// directly, without authentication.
+// Wrap returns an HTTP handler that authenticates requests before forwarding
+// them to handler.
 func (m *Middleware) Wrap(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if !m.errW.IsSupported(request) {
-			handler.ServeHTTP(writer, request)
-			return // not an RPC request
-		}
 		ctx := request.Context()
 		info, err := m.auth(ctx, Request{request: request})
 		if err != nil {

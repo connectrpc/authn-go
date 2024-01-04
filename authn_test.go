@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bufbuild/authn-go"
+	"connectrpc.com/authn"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -61,8 +61,8 @@ func TestMiddleware(t *testing.T) {
 		assert.Equal(t, res.StatusCode, expectCode)
 		assert.Nil(t, res.Body.Close())
 	}
-	// Middleware should ignore non-RPC requests.
-	assertResponse(http.Header{}, 200)
+	// Middleware should authenticate non-RPC requests.
+	assertResponse(http.Header{}, http.StatusUnauthorized)
 	// RPCs without the right bearer token should be rejected.
 	assertResponse(
 		http.Header{"Content-Type": []string{"application/json"}},
