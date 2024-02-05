@@ -73,63 +73,56 @@ func Errorf(template string, args ...any) *connect.Error {
 
 // Request describes a single RPC invocation.
 type Request struct {
-	request *http.Request
-}
-
-// NewRequest constructs a Request from an HTTP request.
-//
-// This function should only be used for testing [AuthFunc] implementations.
-func NewRequest(request *http.Request) Request {
-	return Request{request: request}
+	Request *http.Request
 }
 
 // BasicAuth returns the username and password provided in the request's
 // Authorization header, if any.
 func (r Request) BasicAuth() (username string, password string, ok bool) {
-	return r.request.BasicAuth()
+	return r.Request.BasicAuth()
 }
 
 // Cookies parses and returns the HTTP cookies sent with the request, if any.
 func (r Request) Cookies() []*http.Cookie {
-	return r.request.Cookies()
+	return r.Request.Cookies()
 }
 
 // Cookie returns the named cookie provided in the request or
 // [http.ErrNoCookie] if not found. If multiple cookies match the given name,
 // only one cookie will be returned.
 func (r Request) Cookie(name string) (*http.Cookie, error) {
-	return r.request.Cookie(name)
+	return r.Request.Cookie(name)
 }
 
 // Procedure returns the RPC procedure name, in the form "/service/method". If
 // the request path does not contain a procedure name, the entire path is
 // returned.
 func (r Request) Procedure() string {
-	path := strings.TrimSuffix(r.request.URL.Path, "/")
+	path := strings.TrimSuffix(r.Request.URL.Path, "/")
 	ultimate := strings.LastIndex(path, "/")
 	if ultimate < 0 {
-		return r.request.URL.Path
+		return r.Request.URL.Path
 	}
 	penultimate := strings.LastIndex(path[:ultimate], "/")
 	if penultimate < 0 {
-		return r.request.URL.Path
+		return r.Request.URL.Path
 	}
 	procedure := path[penultimate:]
 	if len(procedure) < 4 { // two slashes + service + method
-		return r.request.URL.Path
+		return r.Request.URL.Path
 	}
 	return procedure
 }
 
 // ClientAddr returns the client address, in IP:port format.
 func (r Request) ClientAddr() string {
-	return r.request.RemoteAddr
+	return r.Request.RemoteAddr
 }
 
 // Protocol returns the RPC protocol. It is one of [connect.ProtocolConnect],
 // [connect.ProtocolGRPC], or [connect.ProtocolGRPCWeb].
 func (r Request) Protocol() string {
-	ct := r.request.Header.Get("Content-Type")
+	ct := r.Request.Header.Get("Content-Type")
 	switch {
 	case strings.HasPrefix(ct, "application/grpc-web"):
 		return connect.ProtocolGRPCWeb
@@ -142,13 +135,13 @@ func (r Request) Protocol() string {
 
 // Header returns the HTTP request headers.
 func (r Request) Header() http.Header {
-	return r.request.Header
+	return r.Request.Header
 }
 
 // TLS returns the TLS connection state, if any. It may be nil if the connection
 // is not using TLS.
 func (r Request) TLS() *tls.ConnectionState {
-	return r.request.TLS
+	return r.Request.TLS
 }
 
 // Middleware is server-side HTTP middleware that authenticates RPC requests.
@@ -182,7 +175,7 @@ func NewMiddleware(auth AuthFunc, opts ...connect.HandlerOption) *Middleware {
 func (m *Middleware) Wrap(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		ctx := request.Context()
-		info, err := m.auth(ctx, NewRequest(request))
+		info, err := m.auth(ctx, Request{Request: request})
 		if err != nil {
 			_ = m.errW.Write(writer, request, err)
 			return
