@@ -76,8 +76,10 @@ type Request struct {
 	request *http.Request
 }
 
-// MakeRequest constructs a Request from an HTTP request.
-func MakeRequest(request *http.Request) Request {
+// NewRequest constructs a Request from an HTTP request.
+//
+// This function should only be used for testing [AuthFunc] implementations.
+func NewRequest(request *http.Request) Request {
 	return Request{request: request}
 }
 
@@ -180,7 +182,7 @@ func NewMiddleware(auth AuthFunc, opts ...connect.HandlerOption) *Middleware {
 func (m *Middleware) Wrap(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		ctx := request.Context()
-		info, err := m.auth(ctx, MakeRequest(request))
+		info, err := m.auth(ctx, NewRequest(request))
 		if err != nil {
 			_ = m.errW.Write(writer, request, err)
 			return
