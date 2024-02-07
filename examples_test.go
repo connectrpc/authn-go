@@ -26,6 +26,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -62,7 +63,7 @@ func Example_basicAuth() {
 
 	// Next, we build our Connect handler.
 	mux := http.NewServeMux()
-	service := &pingv1connect.UnimplementedPingServiceHandler{}
+	service := &pingHandler{}
 	mux.Handle(pingv1connect.NewPingServiceHandler(service))
 
 	// Finally, we wrap the handler with our middleware and start our server.
@@ -78,17 +79,102 @@ func Example_basicAuth() {
 		"Basic "+base64.StdEncoding.EncodeToString([]byte("Aladdin:open-sesame")),
 	)
 	_, err := client.Ping(context.Background(), req)
-
-	// We're using the UnimplementedPingServiceHandler stub, so authenticated
-	// clients should receive an error with CodeUnimplemented.
-	if connect.CodeOf(err) == connect.CodeUnimplemented {
-		fmt.Println("client received response")
-	} else {
+	if err != nil {
 		fmt.Printf("unexpected error: %v\n", err)
+		return
 	}
+	fmt.Println("client received response")
 
 	// Output:
 	// authenticated request from Aladdin
+	// client received response
+}
+
+func Example_bearerToken() {
+	// This example shows how to use this package with bearer token authentication.
+	// Any header-based authentication (including cookies and HTTP basic auth)
+	// works similarly.
+
+	// We'll use a simple allow list to demonstrate how to add authorization logic
+	// conditionally based on the request's procedure.
+	allowList := map[string]struct{}{
+		// Procedure constants are available in the generated code.
+		pingv1connect.PingServicePingProcedure: {},
+	}
+	// And a simple token-to-user map to demonstrate how to authenticate
+	// requests based on a bearer token.
+	tokenToUser := map[string]string{
+		"open-sesame": "Aladdin",
+	}
+
+	// First, we define our authentication logic and use it to build middleware.
+	authenticate := func(_ context.Context, req authn.Request) (any, error) {
+		token, ok := req.BearerToken()
+		if !ok {
+			// We'll allow unauthenticated access to the ping procedure.
+			if _, ok := allowList[req.Procedure()]; ok {
+				fmt.Println("no authentication required for", req.Procedure())
+				return nil, nil // no authentication required
+			}
+			fmt.Println("authentication required for", req.Procedure())
+			err := authn.Errorf("invalid authorization")
+			err.Meta().Set("WWW-Authenticate", "Bearer")
+			return nil, err
+		}
+		user, ok := tokenToUser[token]
+		if !ok {
+			return nil, authn.Errorf("invalid token")
+		}
+		// The request is authenticated!
+		fmt.Println("authenticated request from", user, "for", req.Procedure())
+		return user, nil
+	}
+	middleware := authn.NewMiddleware(authenticate)
+
+	// Next, we build our Connect handler.
+	mux := http.NewServeMux()
+	service := &pingHandler{}
+	mux.Handle(pingv1connect.NewPingServiceHandler(service))
+
+	// Finally, we wrap the handler with our middleware and start our server.
+	handler := middleware.Wrap(mux)
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	// Create an unauthenticated call to the ping procedure.
+	client := pingv1connect.NewPingServiceClient(http.DefaultClient, server.URL)
+	if _, err := client.Ping(context.Background(), connect.NewRequest(
+		&pingv1.PingRequest{Text: "hello"},
+	)); err != nil {
+		fmt.Printf("unexpected error: %v\n", err)
+		return
+	}
+	fmt.Println("client received response")
+
+	// Create an unauthenticated call to the echo procedure.
+	if _, err := client.Echo(context.Background(), connect.NewRequest(
+		&pingv1.EchoRequest{Text: "hello"},
+	)); connect.CodeOf(err) != connect.CodeUnauthenticated {
+		fmt.Printf("unexpected error: %v\n", err)
+		return
+	}
+	fmt.Println("client unauthorized")
+
+	// Create an authenticated call to the echo procedure.
+	req := connect.NewRequest(&pingv1.EchoRequest{Text: "hello"})
+	req.Header().Set("Authorization", "Bearer open-sesame")
+	if _, err := client.Echo(context.Background(), req); err != nil {
+		fmt.Printf("unexpected error: %v\n", err)
+		return
+	}
+	fmt.Println("client received response")
+
+	// Output:
+	// no authentication required for /authn.ping.v1.PingService/Ping
+	// client received response
+	// authentication required for /authn.ping.v1.PingService/Echo
+	// client unauthorized
+	// authenticated request from Aladdin for /authn.ping.v1.PingService/Echo
 	// client received response
 }
 
@@ -269,7 +355,40 @@ func newCertificate(caCertPEM, caKeyPEM []byte, commonName string) (tls.Certific
 	return tls.X509KeyPair(certPEM, certPrivKeyPEM)
 }
 
+// equal is an example of a constant-time comparison function. It is important to
+// use a library like bcrypt.CompareHashAndPassword instead of this function for
+// comparing passwords.
 func equal(left, right string) bool {
+	var leftb, rightb [256]byte
+	copy(leftb[:], left)
+	copy(rightb[:], right)
 	// Using subtle prevents some timing attacks.
-	return subtle.ConstantTimeCompare([]byte(left), []byte(right)) == 1
+	return subtle.ConstantTimeCompare(leftb[:], rightb[:]) == 1
+}
+
+type pingHandler struct {
+	pingv1connect.UnimplementedPingServiceHandler
+}
+
+func (pingHandler) Ping(_ context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
+	return connect.NewResponse(&pingv1.PingResponse{Text: req.Msg.Text}), nil
+}
+
+func (pingHandler) Echo(_ context.Context, req *connect.Request[pingv1.EchoRequest]) (*connect.Response[pingv1.EchoResponse], error) {
+	return connect.NewResponse(&pingv1.EchoResponse{Text: req.Msg.Text}), nil
+}
+
+func (pingHandler) PingStream(_ context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
+	for {
+		req, err := stream.Receive()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+		if err := stream.Send(&pingv1.PingStreamResponse{Text: req.Text}); err != nil {
+			return err
+		}
+	}
 }

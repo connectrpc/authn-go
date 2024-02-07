@@ -82,6 +82,17 @@ func (r Request) BasicAuth() (username string, password string, ok bool) {
 	return r.request.BasicAuth()
 }
 
+// BearerToken returns the bearer token provided in the request's Authorization
+// header, if any.
+func (r Request) BearerToken() (string, bool) {
+	auth := r.request.Header.Get("Authorization")
+	const prefix = "Bearer "
+	if !strings.HasPrefix(auth, prefix) {
+		return "", false
+	}
+	return auth[len(prefix):], true
+}
+
 // Cookies parses and returns the HTTP cookies sent with the request, if any.
 func (r Request) Cookies() []*http.Cookie {
 	return r.request.Cookies()
