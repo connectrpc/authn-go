@@ -44,7 +44,7 @@ func Example_basicAuth() {
 	// works similarly.
 
 	// First, we define our authentication logic and use it to build middleware.
-	authenticate := func(_ context.Context, req authn.Request) (any, error) {
+	authenticate := func(_ context.Context, req *http.Request) (any, error) {
 		username, password, ok := req.BasicAuth()
 		if !ok {
 			return nil, authn.Errorf("invalid authorization")
@@ -95,8 +95,8 @@ func Example_basicAuth() {
 func Example_mutualTLS() {
 	// This example shows how to use this package with mutual TLS.
 	// First, we define our authentication logic and use it to build middleware.
-	authenticate := func(_ context.Context, req authn.Request) (any, error) {
-		tls := req.TLS()
+	authenticate := func(_ context.Context, req *http.Request) (any, error) {
+		tls := req.TLS
 		if tls == nil {
 			return nil, authn.Errorf("TLS required")
 		}
