@@ -19,7 +19,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"connectrpc.com/connect"
 )
@@ -68,40 +67,6 @@ func WithoutInfo(ctx context.Context) context.Context {
 // [connect.CodeUnauthenticated].
 func Errorf(template string, args ...any) *connect.Error {
 	return connect.NewError(connect.CodeUnauthenticated, fmt.Errorf(template, args...))
-}
-
-// Procedure returns the RPC procedure name, in the form "/service/method". If
-// the request path does not contain a procedure name, the entire path is
-// returned.
-func Procedure(request *http.Request) string {
-	path := strings.TrimSuffix(request.URL.Path, "/")
-	ultimate := strings.LastIndex(path, "/")
-	if ultimate < 0 {
-		return request.URL.Path
-	}
-	penultimate := strings.LastIndex(path[:ultimate], "/")
-	if penultimate < 0 {
-		return request.URL.Path
-	}
-	procedure := path[penultimate:]
-	if len(procedure) < 4 { // two slashes + service + method
-		return request.URL.Path
-	}
-	return procedure
-}
-
-// Protocol returns the RPC protocol. It is one of [connect.ProtocolConnect],
-// [connect.ProtocolGRPC], or [connect.ProtocolGRPCWeb].
-func Protocol(request *http.Request) string {
-	ct := request.Header.Get("Content-Type")
-	switch {
-	case strings.HasPrefix(ct, "application/grpc-web"):
-		return connect.ProtocolGRPCWeb
-	case strings.HasPrefix(ct, "application/grpc"):
-		return connect.ProtocolGRPC
-	default:
-		return connect.ProtocolConnect
-	}
 }
 
 // Middleware is server-side HTTP middleware that authenticates RPC requests.
