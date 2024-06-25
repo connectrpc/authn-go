@@ -3,7 +3,8 @@ authn
 [![Build](https://github.com/connectrpc/authn-go/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/connectrpc/authn-go/actions/workflows/ci.yaml)
 [![Report Card](https://goreportcard.com/badge/connectrpc.com/authn)](https://goreportcard.com/report/connectrpc.com/authn)
 [![GoDoc](https://pkg.go.dev/badge/connectrpc.com/authn.svg)](https://pkg.go.dev/connectrpc.com/authn)
-[![Slack](https://img.shields.io/badge/slack-buf-%23e01563)][slack]
+[![Slack](https://img.shields.io/badge/slack-buf-%23e01563)][![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fconnectrpc%2Fauthn-go.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fconnectrpc%2Fauthn-go?ref=badge_shield)
+[slack]
 
 `connectrpc.com/authn` provides authentication middleware for
 [Connect](https://connectrpc.com/). It works with any authentication scheme
@@ -108,3 +109,7 @@ Offered under the [Apache 2 license][license].
 [license]: https://github.com/connectrpc/authn-go/blob/main/LICENSE
 [protocol]: https://connectrpc.com/docs/protocol
 [slack]: https://buf.build/links/slack
+
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fconnectrpc%2Fauthn-go.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fconnectrpc%2Fauthn-go?ref=badge_large)
