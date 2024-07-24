@@ -26,6 +26,14 @@ message PingResponse {
   string text = 1;
 }
 
+message EchoRequest {
+  string text = 1;
+}
+
+message EchoResponse {
+  string text = 1;
+}
+
 message PingStreamRequest {
   string text = 1;
 }
@@ -38,6 +46,10 @@ service PingService {
   // Ping is a unary RPC that returns the same text that was sent.
   rpc Ping(PingRequest) returns (PingResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // Echo is a unary RPC that returns the same text that was sent.
+  rpc Echo(EchoRequest) returns (EchoResponse) {
+    option idempotency_level = IDEMPOTENT;
   }
   // PingStream is a bidirectional stream of pings.
   rpc PingStream(stream PingStreamRequest) returns (stream PingStreamResponse) {}
