@@ -35,7 +35,7 @@ import (
   "connectrpc.com/authn/internal/gen/authn/ping/v1/pingv1connect"
 )
 
-func authenticate(_ context.Context, req authn.Request) (any, error) {
+func authenticate(_ context.Context, req *http.Request) (any, error) {
   username, password, ok := req.BasicAuth()
   if !ok {
     return nil, authn.Errorf("invalid authorization")
