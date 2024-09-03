@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"connectrpc.com/authn"
+	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -104,4 +105,60 @@ func authenticate(_ context.Context, req *http.Request) (any, error) {
 		return nil, authn.Errorf("%q is not the magic passphrase", tok)
 	}
 	return hero, nil
+}
+
+func TestInferProcedures(t *testing.T) {
+	t.Parallel()
+	testProcedures := [][2]string{
+		{"/empty.v1/GetEmpty", "/empty.v1/GetEmpty"},
+		{"/empty.v1/GetEmpty/", "/empty.v1/GetEmpty"},
+		{"/empty.v1/GetEmpty/", "/empty.v1/GetEmpty"},
+		{"/prefix/empty.v1/GetEmpty/", "/empty.v1/GetEmpty"},
+		{"/", "/"},
+		{"/invalid/", "/invalid/"},
+	}
+	for _, tt := range testProcedures {
+		req := httptest.NewRequest(http.MethodPost, tt[0], strings.NewReader("{}"))
+		assert.Equal(t, tt[1], authn.InferProcedure(req))
+	}
+}
+
+func TestInferProtocol(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		contentType  string
+		method       string
+		wantProtocol string
+	}{{
+		name:         "connect",
+		contentType:  "application/json",
+		wantProtocol: connect.ProtocolConnect,
+	}, {
+		name:         "connectSubPath",
+		contentType:  "application/connect+json",
+		wantProtocol: connect.ProtocolConnect,
+	}, {
+		name:         "grpc",
+		contentType:  "application/grpc+proto",
+		wantProtocol: connect.ProtocolGRPC,
+	}, {
+		name:         "grpcWeb",
+		contentType:  "application/grpc-web",
+		wantProtocol: connect.ProtocolGRPCWeb,
+	}, {
+		name:         "grpcWeb",
+		contentType:  "application/grpc-web+json",
+		wantProtocol: connect.ProtocolGRPCWeb,
+	}}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest(http.MethodPost, "/service/Method", strings.NewReader("{}"))
+			if tt.contentType != "" {
+				req.Header.Set("Content-Type", tt.contentType)
+			}
+			assert.Equal(t, tt.wantProtocol, authn.InferProtocol(req))
+		})
+	}
 }
