@@ -24,6 +24,7 @@ import (
 
 	"connectrpc.com/authn"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -50,16 +51,16 @@ func TestMiddleware(t *testing.T) {
 			server.URL+"/empty.v1/GetEmpty",
 			strings.NewReader("{}"),
 		)
-		assert.Nil(t, err)
+		require.NoError(t, err)
 		for k, vals := range headers {
 			for _, v := range vals {
 				req.Header.Add(k, v)
 			}
 		}
 		res, err := server.Client().Do(req)
-		assert.Nil(t, err)
-		assert.Equal(t, res.StatusCode, expectCode)
-		assert.Nil(t, res.Body.Close())
+		require.NoError(t, err)
+		assert.Equal(t, expectCode, res.StatusCode)
+		assert.NoError(t, res.Body.Close())
 	}
 	// Middleware should authenticate non-RPC requests.
 	assertResponse(http.Header{}, http.StatusUnauthorized)
@@ -87,7 +88,7 @@ func assertInfo(ctx context.Context, tb testing.TB) {
 	}
 	name, ok := info.(string)
 	assert.True(tb, ok, "got info of type %T, expected string", info)
-	assert.Equal(tb, name, hero)
+	assert.Equal(tb, hero, name)
 	if id := authn.GetInfo(authn.WithoutInfo(ctx)); id != nil {
 		tb.Fatalf("got info %v after WithoutInfo", id)
 	}
