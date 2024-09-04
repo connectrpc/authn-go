@@ -33,7 +33,7 @@ linters:
     - ireturn           # "accept interfaces, return structs" isn't ironclad
     - lll               # don't want hard limits for line length
     - maintidx          # covered by gocyclo
-    - mnd               # status codes are clearer than constants
+    - mnd               # some unnamed constants are okay
     - nlreturn          # generous whitespace violates house style
     - nonamedreturns    # named returns are fine; it's *bare* returns that are bad
     - protogetter       # too many false positives
