@@ -48,4 +48,7 @@ issues:
   exclude-rules:
     # We need to init a global in-mem HTTP server for testable examples.
     - path: examples_test.go
-      linters: [gocritic, gochecknoglobals, gosec, exhaustruct]
+      linters: [gocritic, gochecknoglobals, gosec]
+    # Allow more lenient rules in example code for brevity.
+    - path: examples_test.go
+      linters: [exhaustruct, nilnil, varnamelen]

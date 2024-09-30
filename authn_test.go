@@ -97,14 +97,14 @@ func assertInfo(ctx context.Context, tb testing.TB) {
 }
 
 func authenticate(_ context.Context, req *http.Request) (any, error) {
-	parts := strings.SplitN(req.Header.Get("Authorization"), " ", 2)
-	if len(parts) < 2 || parts[0] != "Bearer" {
+	token, ok := authn.BearerToken(req)
+	if !ok {
 		err := authn.Errorf("expected Bearer authentication scheme")
 		err.Meta().Set("WWW-Authenticate", "Bearer")
 		return nil, err
 	}
-	if tok := parts[1]; tok != passphrase {
-		return nil, authn.Errorf("%q is not the magic passphrase", tok)
+	if token != passphrase {
+		return nil, authn.Errorf("%q is not the magic passphrase", token)
 	}
 	return hero, nil
 }

@@ -131,6 +131,17 @@ func InferProcedure(url *url.URL) (string, bool) {
 	return procedure, true
 }
 
+// BearerToken returns the bearer token provided in the request's Authorization
+// header, if any.
+func BearerToken(request *http.Request) (string, bool) {
+	const prefix = "Bearer "
+	auth := request.Header.Get("Authorization")
+	if !strings.HasPrefix(auth, prefix) {
+		return "", false
+	}
+	return auth[len(prefix):], true
+}
+
 // Middleware is server-side HTTP middleware that authenticates RPC requests.
 // In addition to rejecting unauthenticated requests, it can optionally attach
 // arbitrary information about the authenticated identity to the context.
