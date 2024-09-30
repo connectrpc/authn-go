@@ -19,10 +19,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
 	"connectrpc.com/authn"
+	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -94,8 +96,8 @@ func assertInfo(ctx context.Context, tb testing.TB) {
 	}
 }
 
-func authenticate(_ context.Context, req authn.Request) (any, error) {
-	parts := strings.SplitN(req.Header().Get("Authorization"), " ", 2)
+func authenticate(_ context.Context, req *http.Request) (any, error) {
+	parts := strings.SplitN(req.Header.Get("Authorization"), " ", 2)
 	if len(parts) < 2 || parts[0] != "Bearer" {
 		err := authn.Errorf("expected Bearer authentication scheme")
 		err.Meta().Set("WWW-Authenticate", "Bearer")
@@ -105,4 +107,152 @@ func authenticate(_ context.Context, req authn.Request) (any, error) {
 		return nil, authn.Errorf("%q is not the magic passphrase", tok)
 	}
 	return hero, nil
+}
+
+func TestInferProcedures(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		url   string
+		want  string
+		valid bool
+	}{
+		{name: "simple", url: "http://localhost:8080/foo", want: "/foo", valid: false},
+		{name: "service", url: "http://localhost:8080/service/bar", want: "/service/bar", valid: true},
+		{name: "trailing", url: "http://localhost:8080/service/bar/", want: "/service/bar/", valid: false},
+		{name: "subroute", url: "http://localhost:8080/api/service/bar", want: "/service/bar", valid: true},
+		{name: "subrouteTrailing", url: "http://localhost:8080/api/service/bar/", want: "/api/service/bar/", valid: false},
+		{name: "missingService", url: "http://localhost:8080//foo", want: "//foo", valid: false},
+		{name: "missingMethod", url: "http://localhost:8080/foo//", want: "/foo//", valid: false},
+		{
+			name:  "real",
+			url:   "http://localhost:8080/connect.ping.v1.PingService/Ping",
+			want:  "/connect.ping.v1.PingService/Ping",
+			valid: true,
+		},
+	}
+	for _, testcase := range tests {
+		testcase := testcase
+		t.Run(testcase.name, func(t *testing.T) {
+			t.Parallel()
+			url, err := url.Parse(testcase.url)
+			require.NoError(t, err)
+			got, valid := authn.InferProcedure(url)
+			assert.Equal(t, testcase.want, got)
+			assert.Equal(t, testcase.valid, valid)
+		})
+	}
+}
+
+func TestInferProtocol(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		contentType string
+		method      string
+		params      url.Values
+		want        string
+		valid       bool
+	}{{
+		name:        "connectUnary",
+		contentType: "application/json",
+		method:      http.MethodPost,
+		params:      nil,
+		want:        connect.ProtocolConnect,
+		valid:       true,
+	}, {
+		name:        "connectStreaming",
+		contentType: "application/connec+json",
+		method:      http.MethodPost,
+		params:      nil,
+		want:        connect.ProtocolConnect,
+		valid:       true,
+	}, {
+		name:        "grpcWeb",
+		contentType: "application/grpc-web",
+		method:      http.MethodPost,
+		params:      nil,
+		want:        connect.ProtocolGRPCWeb,
+		valid:       true,
+	}, {
+		name:        "grpc",
+		contentType: "application/grpc",
+		method:      http.MethodPost,
+		params:      nil,
+		want:        connect.ProtocolGRPC,
+		valid:       true,
+	}, {
+		name:        "connectGet",
+		contentType: "",
+		method:      http.MethodGet,
+		params:      url.Values{"message": []string{"{}"}, "encoding": []string{"json"}},
+		want:        connect.ProtocolConnect,
+		valid:       true,
+	}, {
+		name:        "connectGetProto",
+		contentType: "",
+		method:      http.MethodGet,
+		params:      url.Values{"message": []string{""}, "encoding": []string{"proto"}},
+		want:        connect.ProtocolConnect,
+		valid:       true,
+	}, {
+		name:        "connectGetMissingParams",
+		contentType: "",
+		method:      http.MethodGet,
+		params:      nil,
+		want:        "",
+		valid:       false,
+	}, {
+		name:        "connectGetMissingParam-Message",
+		contentType: "",
+		method:      http.MethodGet,
+		params:      url.Values{"encoding": []string{"json"}},
+		want:        "",
+		valid:       false,
+	}, {
+		name:        "connectGetMissingParam-Encoding",
+		contentType: "",
+		method:      http.MethodGet,
+		params:      url.Values{"message": []string{"{}"}},
+		want:        "",
+		valid:       false,
+	}, {
+		name:        "connectPutContentType",
+		contentType: "application/connect+json",
+		method:      http.MethodPut,
+		params:      nil,
+		want:        "",
+		valid:       false,
+	}, {
+		name:        "nakedGet",
+		contentType: "",
+		method:      http.MethodGet,
+		params:      nil,
+		want:        "",
+		valid:       false,
+	}, {
+		name:        "unknown",
+		contentType: "text/html",
+		method:      http.MethodPost,
+		params:      nil,
+		want:        "",
+		valid:       false,
+	}}
+	for _, testcase := range tests {
+		testcase := testcase
+		t.Run(testcase.name, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest(testcase.method, "http://localhost:8080/service/Method", nil)
+			if testcase.contentType != "" {
+				req.Header.Set("Content-Type", testcase.contentType)
+			}
+			if testcase.params != nil {
+				req.URL.RawQuery = testcase.params.Encode()
+			}
+			req.Method = testcase.method
+			got, valid := authn.InferProtocol(req)
+			assert.Equal(t, testcase.want, got, "protocol")
+			assert.Equal(t, testcase.valid, valid, "valid")
+		})
+	}
 }
