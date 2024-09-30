@@ -18,7 +18,9 @@ package authn
 import (
 	"context"
 	"fmt"
+	"mime"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -72,36 +74,61 @@ func Errorf(template string, args ...any) *connect.Error {
 
 // InferProtocol returns the inferred RPC protocol. It is one of
 // [connect.ProtocolConnect], [connect.ProtocolGRPC], or [connect.ProtocolGRPCWeb].
-func InferProtocol(request *http.Request) string {
-	ct := request.Header.Get("Content-Type")
+func InferProtocol(request *http.Request) (string, bool) {
+	const (
+		grpcContentTypeDefault             = "application/grpc"
+		grpcContentTypePrefix              = "application/grpc+"
+		grpcWebContentTypeDefault          = "application/grpc-web"
+		grpcWebContentTypePrefix           = "application/grpc-web+"
+		connectStreamingContentTypePrefix  = "application/connect+"
+		connectUnaryContentTypePrefix      = "application/"
+		connectUnaryMessageQueryParameter  = "message"
+		connectUnaryEncodingQueryParameter = "encoding"
+	)
+	ctype := canonicalizeContentType(request.Header.Get("Content-Type"))
+	isPost := request.Method == http.MethodPost
+	isGet := request.Method == http.MethodGet
 	switch {
-	case strings.HasPrefix(ct, "application/grpc-web"):
-		return connect.ProtocolGRPCWeb
-	case strings.HasPrefix(ct, "application/grpc"):
-		return connect.ProtocolGRPC
+	case isPost && (ctype == grpcContentTypeDefault || strings.HasPrefix(ctype, grpcContentTypePrefix)):
+		return connect.ProtocolGRPC, true
+	case isPost && (ctype == grpcWebContentTypeDefault || strings.HasPrefix(ctype, grpcWebContentTypePrefix)):
+		return connect.ProtocolGRPCWeb, true
+	case isPost && strings.HasPrefix(ctype, connectStreamingContentTypePrefix):
+		return connect.ProtocolConnect, true
+	case isPost && strings.HasPrefix(ctype, connectUnaryContentTypePrefix):
+		return connect.ProtocolConnect, true
+	case isGet:
+		query := request.URL.Query()
+		hasMessage := query.Has(connectUnaryMessageQueryParameter)
+		hasEncoding := query.Has(connectUnaryEncodingQueryParameter)
+		if !hasMessage || !hasEncoding {
+			return "", false
+		}
+		return connect.ProtocolConnect, true
 	default:
-		return connect.ProtocolConnect
+		return "", false
 	}
 }
 
-// InferProcedure returns the inferred RPC procedure. It is of the form
-// "/service/method". If the request path does not contain a procedure name, the
-// entire path is returned.
-func InferProcedure(request *http.Request) string {
-	path := strings.TrimSuffix(request.URL.Path, "/")
+// InferProcedure returns the inferred RPC procedure. It's returned in the form
+// "/service/method" if a valid suffix is found. If the request doesn't contain
+// a service and method, the entire path and false is returned.
+func InferProcedure(url *url.URL) (string, bool) {
+	path := url.Path
 	ultimate := strings.LastIndex(path, "/")
 	if ultimate < 0 {
-		return request.URL.Path
+		return url.Path, false
 	}
 	penultimate := strings.LastIndex(path[:ultimate], "/")
 	if penultimate < 0 {
-		return request.URL.Path
+		return url.Path, false
 	}
 	procedure := path[penultimate:]
-	if len(procedure) < 4 { // two slashes + service + method
-		return request.URL.Path
+	// Ensure that the service and method are non-empty.
+	if ultimate == len(path)-1 || penultimate == ultimate-1 {
+		return url.Path, false
 	}
-	return procedure
+	return procedure, true
 }
 
 // Middleware is server-side HTTP middleware that authenticates RPC requests.
@@ -146,4 +173,44 @@ func (m *Middleware) Wrap(handler http.Handler) http.Handler {
 		}
 		handler.ServeHTTP(writer, request)
 	})
+}
+
+func canonicalizeContentType(contentType string) string {
+	// Typically, clients send Content-Type in canonical form, without
+	// parameters. In those cases, we'd like to avoid parsing and
+	// canonicalization overhead.
+	//
+	// See https://www.rfc-editor.org/rfc/rfc2045.html#section-5.1 for a full
+	// grammar.
+	var slashes int
+	for _, r := range contentType {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r == '.' || r == '+' || r == '-':
+		case r == '/':
+			slashes++
+		default:
+			return canonicalizeContentTypeSlow(contentType)
+		}
+	}
+	if slashes == 1 {
+		return contentType
+	}
+	return canonicalizeContentTypeSlow(contentType)
+}
+
+func canonicalizeContentTypeSlow(contentType string) string {
+	base, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return contentType
+	}
+	// According to RFC 9110 Section 8.3.2, the charset parameter value should be treated as case-insensitive.
+	// mime.FormatMediaType canonicalizes parameter names, but not parameter values,
+	// because the case sensitivity of a parameter value depends on its semantics.
+	// Therefore, the charset parameter value should be canonicalized here.
+	// ref.) https://httpwg.org/specs/rfc9110.html#rfc.section.8.3.2
+	if charset, ok := params["charset"]; ok {
+		params["charset"] = strings.ToLower(charset)
+	}
+	return mime.FormatMediaType(base, params)
 }
