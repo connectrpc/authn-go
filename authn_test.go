@@ -256,3 +256,12 @@ func TestInferProtocol(t *testing.T) {
 		})
 	}
 }
+
+func TestBearerTokenCaseInsensitive(t *testing.T) {
+	t.Parallel()
+	req := httptest.NewRequest(http.MethodGet, "http://localhost:8080/service/Method", nil)
+	req.Header.Set("Authorization", "bearer "+passphrase)
+	token, ok := authn.BearerToken(req)
+	assert.True(t, ok)
+	assert.Equal(t, passphrase, token)
+}
