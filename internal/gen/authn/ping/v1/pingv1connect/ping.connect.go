@@ -52,6 +52,8 @@ const (
 const (
 	// PingServicePingProcedure is the fully-qualified name of the PingService's Ping RPC.
 	PingServicePingProcedure = "/authn.ping.v1.PingService/Ping"
+	// PingServiceEchoProcedure is the fully-qualified name of the PingService's Echo RPC.
+	PingServiceEchoProcedure = "/authn.ping.v1.PingService/Echo"
 	// PingServicePingStreamProcedure is the fully-qualified name of the PingService's PingStream RPC.
 	PingServicePingStreamProcedure = "/authn.ping.v1.PingService/PingStream"
 )
@@ -60,6 +62,7 @@ const (
 var (
 	pingServiceServiceDescriptor          = v1.File_authn_ping_v1_ping_proto.Services().ByName("PingService")
 	pingServicePingMethodDescriptor       = pingServiceServiceDescriptor.Methods().ByName("Ping")
+	pingServiceEchoMethodDescriptor       = pingServiceServiceDescriptor.Methods().ByName("Echo")
 	pingServicePingStreamMethodDescriptor = pingServiceServiceDescriptor.Methods().ByName("PingStream")
 )
 
@@ -67,6 +70,8 @@ var (
 type PingServiceClient interface {
 	// Ping is a unary RPC that returns the same text that was sent.
 	Ping(context.Context, *connect.Request[v1.PingRequest]) (*connect.Response[v1.PingResponse], error)
+	// Echo is a unary RPC that returns the same text that was sent.
+	Echo(context.Context, *connect.Request[v1.EchoRequest]) (*connect.Response[v1.EchoResponse], error)
 	// PingStream is a bidirectional stream of pings.
 	PingStream(context.Context) *connect.BidiStreamForClient[v1.PingStreamRequest, v1.PingStreamResponse]
 }
@@ -88,6 +93,13 @@ func NewPingServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
+		echo: connect.NewClient[v1.EchoRequest, v1.EchoResponse](
+			httpClient,
+			baseURL+PingServiceEchoProcedure,
+			connect.WithSchema(pingServiceEchoMethodDescriptor),
+			connect.WithIdempotency(connect.IdempotencyIdempotent),
+			connect.WithClientOptions(opts...),
+		),
 		pingStream: connect.NewClient[v1.PingStreamRequest, v1.PingStreamResponse](
 			httpClient,
 			baseURL+PingServicePingStreamProcedure,
@@ -100,12 +112,18 @@ func NewPingServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 // pingServiceClient implements PingServiceClient.
 type pingServiceClient struct {
 	ping       *connect.Client[v1.PingRequest, v1.PingResponse]
+	echo       *connect.Client[v1.EchoRequest, v1.EchoResponse]
 	pingStream *connect.Client[v1.PingStreamRequest, v1.PingStreamResponse]
 }
 
 // Ping calls authn.ping.v1.PingService.Ping.
 func (c *pingServiceClient) Ping(ctx context.Context, req *connect.Request[v1.PingRequest]) (*connect.Response[v1.PingResponse], error) {
 	return c.ping.CallUnary(ctx, req)
+}
+
+// Echo calls authn.ping.v1.PingService.Echo.
+func (c *pingServiceClient) Echo(ctx context.Context, req *connect.Request[v1.EchoRequest]) (*connect.Response[v1.EchoResponse], error) {
+	return c.echo.CallUnary(ctx, req)
 }
 
 // PingStream calls authn.ping.v1.PingService.PingStream.
@@ -117,6 +135,8 @@ func (c *pingServiceClient) PingStream(ctx context.Context) *connect.BidiStreamF
 type PingServiceHandler interface {
 	// Ping is a unary RPC that returns the same text that was sent.
 	Ping(context.Context, *connect.Request[v1.PingRequest]) (*connect.Response[v1.PingResponse], error)
+	// Echo is a unary RPC that returns the same text that was sent.
+	Echo(context.Context, *connect.Request[v1.EchoRequest]) (*connect.Response[v1.EchoResponse], error)
 	// PingStream is a bidirectional stream of pings.
 	PingStream(context.Context, *connect.BidiStream[v1.PingStreamRequest, v1.PingStreamResponse]) error
 }
@@ -134,6 +154,13 @@ func NewPingServiceHandler(svc PingServiceHandler, opts ...connect.HandlerOption
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
+	pingServiceEchoHandler := connect.NewUnaryHandler(
+		PingServiceEchoProcedure,
+		svc.Echo,
+		connect.WithSchema(pingServiceEchoMethodDescriptor),
+		connect.WithIdempotency(connect.IdempotencyIdempotent),
+		connect.WithHandlerOptions(opts...),
+	)
 	pingServicePingStreamHandler := connect.NewBidiStreamHandler(
 		PingServicePingStreamProcedure,
 		svc.PingStream,
@@ -144,6 +171,8 @@ func NewPingServiceHandler(svc PingServiceHandler, opts ...connect.HandlerOption
 		switch r.URL.Path {
 		case PingServicePingProcedure:
 			pingServicePingHandler.ServeHTTP(w, r)
+		case PingServiceEchoProcedure:
+			pingServiceEchoHandler.ServeHTTP(w, r)
 		case PingServicePingStreamProcedure:
 			pingServicePingStreamHandler.ServeHTTP(w, r)
 		default:
@@ -157,6 +186,10 @@ type UnimplementedPingServiceHandler struct{}
 
 func (UnimplementedPingServiceHandler) Ping(context.Context, *connect.Request[v1.PingRequest]) (*connect.Response[v1.PingResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("authn.ping.v1.PingService.Ping is not implemented"))
+}
+
+func (UnimplementedPingServiceHandler) Echo(context.Context, *connect.Request[v1.EchoRequest]) (*connect.Response[v1.EchoResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("authn.ping.v1.PingService.Echo is not implemented"))
 }
 
 func (UnimplementedPingServiceHandler) PingStream(context.Context, *connect.BidiStream[v1.PingStreamRequest, v1.PingStreamResponse]) error {
