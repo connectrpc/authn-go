@@ -1,6 +1,6 @@
 module connectrpc.com/authn
 
-go 1.21
+go 1.26.0
 
 require (
 	connectrpc.com/connect v1.16.2

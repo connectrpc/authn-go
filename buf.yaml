@@ -3,7 +3,7 @@ modules:
   - path: internal/proto
 lint:
   use:
-    - DEFAULT
+    - STANDARD
   disallow_comment_ignores: true
 breaking:
   use:
