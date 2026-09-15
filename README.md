@@ -1,7 +1,6 @@
 authn
 =====
 [![Build](https://github.com/connectrpc/authn-go/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/connectrpc/authn-go/actions/workflows/ci.yaml)
-[![Report Card](https://goreportcard.com/badge/connectrpc.com/authn)](https://goreportcard.com/report/connectrpc.com/authn)
 [![GoDoc](https://pkg.go.dev/badge/connectrpc.com/authn.svg)](https://pkg.go.dev/connectrpc.com/authn)
 [![Slack](https://img.shields.io/badge/slack-buf-%23e01563)][slack]
 
