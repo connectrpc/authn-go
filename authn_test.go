@@ -1,4 +1,4 @@
-// Copyright 2023-2024 Buf Technologies, Inc.
+// Copyright 2023-2026 Buf Technologies, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -132,7 +132,6 @@ func TestInferProcedures(t *testing.T) {
 		},
 	}
 	for _, testcase := range tests {
-		testcase := testcase
 		t.Run(testcase.name, func(t *testing.T) {
 			t.Parallel()
 			url, err := url.Parse(testcase.url)
@@ -239,10 +238,9 @@ func TestInferProtocol(t *testing.T) {
 		valid:       false,
 	}}
 	for _, testcase := range tests {
-		testcase := testcase
 		t.Run(testcase.name, func(t *testing.T) {
 			t.Parallel()
-			req := httptest.NewRequest(testcase.method, "http://localhost:8080/service/Method", nil)
+			req := httptest.NewRequestWithContext(t.Context(), testcase.method, "http://localhost:8080/service/Method", nil)
 			if testcase.contentType != "" {
 				req.Header.Set("Content-Type", testcase.contentType)
 			}
@@ -259,7 +257,7 @@ func TestInferProtocol(t *testing.T) {
 
 func TestBearerTokenCaseInsensitive(t *testing.T) {
 	t.Parallel()
-	req := httptest.NewRequest(http.MethodGet, "http://localhost:8080/service/Method", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://localhost:8080/service/Method", nil)
 	req.Header.Set("Authorization", "bearer "+passphrase)
 	token, ok := authn.BearerToken(req)
 	assert.True(t, ok)
