@@ -7,11 +7,12 @@ MAKEFLAGS += --warn-undefined-variables
 MAKEFLAGS += --no-builtin-rules
 MAKEFLAGS += --no-print-directory
 BIN := .tmp/bin
-export PATH := $(BIN):$(PATH)
+export PATH := $(abspath $(BIN)):$(PATH)
 export GOBIN := $(abspath $(BIN))
-COPYRIGHT_YEARS := 2023-2024
-LICENSE_IGNORE := --ignore testdata/
-BUF_VERSION := 1.39.0
+COPYRIGHT_YEARS := 2023-2026
+LICENSE_IGNORE := --ignore testdata/ --ignore .github/ --ignore ".*\.ya?ml"
+BUF_VERSION := 1.73.0
+GOLANGCI_LINT_VERSION ?= v2.13.2
 
 .PHONY: help
 help: ## Describe useful make targets
@@ -45,15 +46,17 @@ generate: $(BIN)/buf $(BIN)/protoc-gen-go $(BIN)/protoc-gen-connect-go $(BIN)/li
 		--year-range "$(COPYRIGHT_YEARS)" $(LICENSE_IGNORE)
 
 .PHONY: lint
-lint: $(BIN)/golangci-lint ## Lint
+lint: $(BIN)/golangci-lint $(BIN)/buf ## Lint Go and protobuf
 	go vet ./...
 	golangci-lint run --modules-download-mode=readonly --timeout=3m0s
+	golangci-lint fmt --diff
 	buf lint
 	buf format -d --exit-code
 
 .PHONY: lintfix
-lintfix: $(BIN)/golangci-lint ## Automatically fix some lint errors
+lintfix: $(BIN)/golangci-lint $(BIN)/buf ## Automatically fix some lint errors
 	golangci-lint run --fix --modules-download-mode=readonly --timeout=3m0s
+	golangci-lint fmt
 	buf format -w
 
 .PHONY: install
@@ -75,7 +78,7 @@ $(BIN)/license-header: Makefile
 
 $(BIN)/golangci-lint: Makefile
 	@mkdir -p $(@D)
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.60.3
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
 $(BIN)/buf: Makefile
 	@mkdir -p $(@D)
