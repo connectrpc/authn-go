@@ -17,13 +17,13 @@ package authn
 
 import (
 	"context"
-	"fmt"
 	"mime"
 	"net/http"
 	"net/url"
 	"strings"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 )
 
 type key int
@@ -69,11 +69,12 @@ func WithoutInfo(ctx context.Context) context.Context {
 // Errorf is a convenience function that returns an error coded with
 // [connect.CodeUnauthenticated].
 func Errorf(template string, args ...any) *connect.Error {
-	return connect.NewError(connect.CodeUnauthenticated, fmt.Errorf(template, args...))
+	return connect.Errorf(connect.CodeUnauthenticated, template, args...)
 }
 
 // InferProtocol returns the inferred RPC protocol. It is one of
-// [connect.ProtocolConnect], [connect.ProtocolGRPC], or [connect.ProtocolGRPCWeb].
+// [connect.ProtocolNameConnect], [connect.ProtocolNameGRPC], or
+// [connect.ProtocolNameGRPCWeb].
 func InferProtocol(request *http.Request) (string, bool) {
 	const (
 		grpcContentTypeDefault             = "application/grpc"
@@ -90,13 +91,13 @@ func InferProtocol(request *http.Request) (string, bool) {
 	isGet := request.Method == http.MethodGet
 	switch {
 	case isPost && (ctype == grpcContentTypeDefault || strings.HasPrefix(ctype, grpcContentTypePrefix)):
-		return connect.ProtocolGRPC, true
+		return connect.ProtocolNameGRPC, true
 	case isPost && (ctype == grpcWebContentTypeDefault || strings.HasPrefix(ctype, grpcWebContentTypePrefix)):
-		return connect.ProtocolGRPCWeb, true
+		return connect.ProtocolNameGRPCWeb, true
 	case isPost && strings.HasPrefix(ctype, connectStreamingContentTypePrefix):
-		return connect.ProtocolConnect, true
+		return connect.ProtocolNameConnect, true
 	case isPost && strings.HasPrefix(ctype, connectUnaryContentTypePrefix):
-		return connect.ProtocolConnect, true
+		return connect.ProtocolNameConnect, true
 	case isGet:
 		query := request.URL.Query()
 		hasMessage := query.Has(connectUnaryMessageQueryParameter)
@@ -104,7 +105,7 @@ func InferProtocol(request *http.Request) (string, bool) {
 		if !hasMessage || !hasEncoding {
 			return "", false
 		}
-		return connect.ProtocolConnect, true
+		return connect.ProtocolNameConnect, true
 	default:
 		return "", false
 	}
@@ -152,7 +153,7 @@ func BearerToken(request *http.Request) (string, bool) {
 // been authenticated.
 type Middleware struct {
 	auth AuthFunc
-	errW *connect.ErrorWriter
+	errW *connecthttp.ErrorWriter
 }
 
 // NewMiddleware constructs HTTP middleware using the supplied authentication
@@ -161,11 +162,11 @@ type Middleware struct {
 // interceptors, and application code may access it with [GetInfo].
 //
 // In order to properly marshal errors, applications must pass NewMiddleware
-// the same handler options used when constructing Connect handlers.
-func NewMiddleware(auth AuthFunc, opts ...connect.HandlerOption) *Middleware {
+// the same options passed to [connecthttp.Mount].
+func NewMiddleware(auth AuthFunc, opts ...connecthttp.Option) *Middleware {
 	return &Middleware{
 		auth: auth,
-		errW: connect.NewErrorWriter(opts...),
+		errW: connecthttp.NewErrorWriter(opts...),
 	}
 }
 

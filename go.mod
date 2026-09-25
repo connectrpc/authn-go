@@ -1,11 +1,11 @@
-module connectrpc.com/authn
+module connectrpc.com/authn/v2
 
 go 1.26
 
 require (
-	connectrpc.com/connect v1.16.2
+	connectrpc.com/connect/v2 v2.0.0-alpha.1
 	github.com/stretchr/testify v1.9.0
-	google.golang.org/protobuf v1.34.2
+	google.golang.org/protobuf v1.36.11
 )
 
 require (

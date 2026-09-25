@@ -22,176 +22,225 @@
 package pingv1connect
 
 import (
-	v1 "connectrpc.com/authn/internal/gen/authn/ping/v1"
-	connect "connectrpc.com/connect"
+	v1 "connectrpc.com/authn/v2/internal/gen/authn/ping/v1"
+	connect "connectrpc.com/connect/v2"
 	context "context"
-	errors "errors"
-	http "net/http"
-	strings "strings"
+	sync "sync"
 )
-
-// This is a compile-time assertion to ensure that this generated file and the connect package are
-// compatible. If you get a compiler error that this constant is not defined, this code was
-// generated with a version of connect newer than the one compiled into your binary. You can fix the
-// problem by either regenerating this code with an older version of connect or updating the connect
-// version compiled into your binary.
-const _ = connect.IsAtLeastVersion1_13_0
 
 const (
 	// PingServiceName is the fully-qualified name of the PingService service.
 	PingServiceName = "authn.ping.v1.PingService"
 )
 
-// These constants are the fully-qualified names of the RPCs defined in this package. They're
-// exposed at runtime as Spec.Procedure and as the final two segments of the HTTP route.
+// These constants are the procedure names of the RPCs defined in this package. They're exposed at
+// runtime as Spec.Procedure and as the final two segments of the HTTP route.
 //
 // Note that these are different from the fully-qualified method names used by
 // google.golang.org/protobuf/reflect/protoreflect. To convert from these constants to
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
-	// PingServicePingProcedure is the fully-qualified name of the PingService's Ping RPC.
+	// PingServicePingProcedure is the procedure name of the PingService's Ping RPC.
 	PingServicePingProcedure = "/authn.ping.v1.PingService/Ping"
-	// PingServiceEchoProcedure is the fully-qualified name of the PingService's Echo RPC.
+	// PingServiceEchoProcedure is the procedure name of the PingService's Echo RPC.
 	PingServiceEchoProcedure = "/authn.ping.v1.PingService/Echo"
-	// PingServicePingStreamProcedure is the fully-qualified name of the PingService's PingStream RPC.
+	// PingServicePingStreamProcedure is the procedure name of the PingService's PingStream RPC.
 	PingServicePingStreamProcedure = "/authn.ping.v1.PingService/PingStream"
 )
 
-// These variables are the protoreflect.Descriptor objects for the RPCs defined in this package.
 var (
-	pingServiceServiceDescriptor          = v1.File_authn_ping_v1_ping_proto.Services().ByName("PingService")
-	pingServicePingMethodDescriptor       = pingServiceServiceDescriptor.Methods().ByName("Ping")
-	pingServiceEchoMethodDescriptor       = pingServiceServiceDescriptor.Methods().ByName("Echo")
-	pingServicePingStreamMethodDescriptor = pingServiceServiceDescriptor.Methods().ByName("PingStream")
+	pingServicePingSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType:       connect.StreamTypeUnary,
+			Schema:           v1.File_authn_ping_v1_ping_proto.Services().ByName("PingService").Methods().ByName("Ping"),
+			Procedure:        PingServicePingProcedure,
+			IdempotencyLevel: connect.IdempotencyNoSideEffects,
+		}
+	})
+	pingServiceEchoSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType:       connect.StreamTypeUnary,
+			Schema:           v1.File_authn_ping_v1_ping_proto.Services().ByName("PingService").Methods().ByName("Echo"),
+			Procedure:        PingServiceEchoProcedure,
+			IdempotencyLevel: connect.IdempotencyIdempotent,
+		}
+	})
+	pingServicePingStreamSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeBidi,
+			Schema:     v1.File_authn_ping_v1_ping_proto.Services().ByName("PingService").Methods().ByName("PingStream"),
+			Procedure:  PingServicePingStreamProcedure,
+		}
+	})
 )
 
 // PingServiceClient is a client for the authn.ping.v1.PingService service.
 type PingServiceClient interface {
 	// Ping is a unary RPC that returns the same text that was sent.
-	Ping(context.Context, *connect.Request[v1.PingRequest]) (*connect.Response[v1.PingResponse], error)
+	Ping(context.Context, *v1.PingRequest) (*v1.PingResponse, error)
 	// Echo is a unary RPC that returns the same text that was sent.
-	Echo(context.Context, *connect.Request[v1.EchoRequest]) (*connect.Response[v1.EchoResponse], error)
+	Echo(context.Context, *v1.EchoRequest) (*v1.EchoResponse, error)
 	// PingStream is a bidirectional stream of pings.
-	PingStream(context.Context) *connect.BidiStreamForClient[v1.PingStreamRequest, v1.PingStreamResponse]
+	PingStream(context.Context) (PingServicePingStreamClientStream, error)
 }
 
-// NewPingServiceClient constructs a client for the authn.ping.v1.PingService service. By default,
-// it uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses, and
-// sends uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC()
-// or connect.WithGRPCWeb() options.
-//
-// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
-// http://api.acme.com or https://acme.com/grpc).
-func NewPingServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) PingServiceClient {
-	baseURL = strings.TrimRight(baseURL, "/")
-	return &pingServiceClient{
-		ping: connect.NewClient[v1.PingRequest, v1.PingResponse](
-			httpClient,
-			baseURL+PingServicePingProcedure,
-			connect.WithSchema(pingServicePingMethodDescriptor),
-			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
-			connect.WithClientOptions(opts...),
-		),
-		echo: connect.NewClient[v1.EchoRequest, v1.EchoResponse](
-			httpClient,
-			baseURL+PingServiceEchoProcedure,
-			connect.WithSchema(pingServiceEchoMethodDescriptor),
-			connect.WithIdempotency(connect.IdempotencyIdempotent),
-			connect.WithClientOptions(opts...),
-		),
-		pingStream: connect.NewClient[v1.PingStreamRequest, v1.PingStreamResponse](
-			httpClient,
-			baseURL+PingServicePingStreamProcedure,
-			connect.WithSchema(pingServicePingStreamMethodDescriptor),
-			connect.WithClientOptions(opts...),
-		),
+// NewPingServiceClient constructs a client for the authn.ping.v1.PingService service. Multiple
+// service clients may share a single connect.Client.
+func NewPingServiceClient(client *connect.Client) PingServiceClient {
+	return &pingServiceClient{client: client}
+}
+
+// PingServicePingStreamClientStream is the client stream for the PingService's PingStream RPC.
+type PingServicePingStreamClientStream struct {
+	stream connect.ClientStream
+}
+
+// SendHeaders opens the stream and flushes the request headers without a message. The first Send or
+// Receive does this implicitly.
+func (s PingServicePingStreamClientStream) SendHeaders() error {
+	return s.stream.SendHeaders()
+}
+
+// Send sends a request message to the server.
+func (s PingServicePingStreamClientStream) Send(req *v1.PingStreamRequest) error {
+	return s.stream.Send(req)
+}
+
+// CloseSend closes the request side of the stream.
+func (s PingServicePingStreamClientStream) CloseSend() error {
+	return s.stream.CloseSend()
+}
+
+// Receive returns the next response message from the server.
+func (s PingServicePingStreamClientStream) Receive() (*v1.PingStreamResponse, error) {
+	var res v1.PingStreamResponse
+	if err := s.stream.Receive(&res); err != nil {
+		return nil, err
 	}
+	return &res, nil
 }
 
-// pingServiceClient implements PingServiceClient.
-type pingServiceClient struct {
-	ping       *connect.Client[v1.PingRequest, v1.PingResponse]
-	echo       *connect.Client[v1.EchoRequest, v1.EchoResponse]
-	pingStream *connect.Client[v1.PingStreamRequest, v1.PingStreamResponse]
-}
-
-// Ping calls authn.ping.v1.PingService.Ping.
-func (c *pingServiceClient) Ping(ctx context.Context, req *connect.Request[v1.PingRequest]) (*connect.Response[v1.PingResponse], error) {
-	return c.ping.CallUnary(ctx, req)
-}
-
-// Echo calls authn.ping.v1.PingService.Echo.
-func (c *pingServiceClient) Echo(ctx context.Context, req *connect.Request[v1.EchoRequest]) (*connect.Response[v1.EchoResponse], error) {
-	return c.echo.CallUnary(ctx, req)
-}
-
-// PingStream calls authn.ping.v1.PingService.PingStream.
-func (c *pingServiceClient) PingStream(ctx context.Context) *connect.BidiStreamForClient[v1.PingStreamRequest, v1.PingStreamResponse] {
-	return c.pingStream.CallBidiStream(ctx)
+// Close releases the stream's resources. It is idempotent and is typically deferred to clean up a
+// stream abandoned before io.EOF.
+func (s PingServicePingStreamClientStream) Close() error {
+	return s.stream.Close()
 }
 
 // PingServiceHandler is an implementation of the authn.ping.v1.PingService service.
 type PingServiceHandler interface {
 	// Ping is a unary RPC that returns the same text that was sent.
-	Ping(context.Context, *connect.Request[v1.PingRequest]) (*connect.Response[v1.PingResponse], error)
+	Ping(context.Context, *v1.PingRequest) (*v1.PingResponse, error)
 	// Echo is a unary RPC that returns the same text that was sent.
-	Echo(context.Context, *connect.Request[v1.EchoRequest]) (*connect.Response[v1.EchoResponse], error)
+	Echo(context.Context, *v1.EchoRequest) (*v1.EchoResponse, error)
 	// PingStream is a bidirectional stream of pings.
-	PingStream(context.Context, *connect.BidiStream[v1.PingStreamRequest, v1.PingStreamResponse]) error
+	PingStream(context.Context, PingServicePingStreamServerStream) error
 }
 
-// NewPingServiceHandler builds an HTTP handler from the service implementation. It returns the path
-// on which to mount the handler and the handler itself.
-//
-// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
-// and JSON codecs. They also support gzip compression.
-func NewPingServiceHandler(svc PingServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
-	pingServicePingHandler := connect.NewUnaryHandler(
-		PingServicePingProcedure,
-		svc.Ping,
-		connect.WithSchema(pingServicePingMethodDescriptor),
-		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
-		connect.WithHandlerOptions(opts...),
+// RegisterPingServiceHandler registers svc as the authn.ping.v1.PingService implementation on
+// server.
+func RegisterPingServiceHandler(server *connect.Server, svc PingServiceHandler) {
+	adapter := pingServiceHandler{svc: svc}
+	server.Register(
+		connect.Method{Spec: pingServicePingSpec(), Handler: adapter.ping},
+		connect.Method{Spec: pingServiceEchoSpec(), Handler: adapter.echo},
+		connect.Method{Spec: pingServicePingStreamSpec(), Handler: adapter.pingStream},
 	)
-	pingServiceEchoHandler := connect.NewUnaryHandler(
-		PingServiceEchoProcedure,
-		svc.Echo,
-		connect.WithSchema(pingServiceEchoMethodDescriptor),
-		connect.WithIdempotency(connect.IdempotencyIdempotent),
-		connect.WithHandlerOptions(opts...),
-	)
-	pingServicePingStreamHandler := connect.NewBidiStreamHandler(
-		PingServicePingStreamProcedure,
-		svc.PingStream,
-		connect.WithSchema(pingServicePingStreamMethodDescriptor),
-		connect.WithHandlerOptions(opts...),
-	)
-	return "/authn.ping.v1.PingService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case PingServicePingProcedure:
-			pingServicePingHandler.ServeHTTP(w, r)
-		case PingServiceEchoProcedure:
-			pingServiceEchoHandler.ServeHTTP(w, r)
-		case PingServicePingStreamProcedure:
-			pingServicePingStreamHandler.ServeHTTP(w, r)
-		default:
-			http.NotFound(w, r)
-		}
-	})
+}
+
+// PingServicePingStreamServerStream is the server stream for the PingService's PingStream RPC.
+type PingServicePingStreamServerStream struct {
+	stream connect.ServerStream
+}
+
+// Receive returns the next request message from the client.
+func (s PingServicePingStreamServerStream) Receive() (*v1.PingStreamRequest, error) {
+	var req v1.PingStreamRequest
+	if err := s.stream.Receive(&req); err != nil {
+		return nil, err
+	}
+	return &req, nil
+}
+
+// SendHeaders flushes the response headers without a message. The first Send does this implicitly.
+func (s PingServicePingStreamServerStream) SendHeaders() error {
+	return s.stream.SendHeaders()
+}
+
+// Send sends a response message to the client.
+func (s PingServicePingStreamServerStream) Send(res *v1.PingStreamResponse) error {
+	return s.stream.Send(res)
 }
 
 // UnimplementedPingServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedPingServiceHandler struct{}
 
-func (UnimplementedPingServiceHandler) Ping(context.Context, *connect.Request[v1.PingRequest]) (*connect.Response[v1.PingResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("authn.ping.v1.PingService.Ping is not implemented"))
+func (UnimplementedPingServiceHandler) Ping(context.Context, *v1.PingRequest) (*v1.PingResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "authn.ping.v1.PingService.Ping is not implemented")
 }
 
-func (UnimplementedPingServiceHandler) Echo(context.Context, *connect.Request[v1.EchoRequest]) (*connect.Response[v1.EchoResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("authn.ping.v1.PingService.Echo is not implemented"))
+func (UnimplementedPingServiceHandler) Echo(context.Context, *v1.EchoRequest) (*v1.EchoResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "authn.ping.v1.PingService.Echo is not implemented")
 }
 
-func (UnimplementedPingServiceHandler) PingStream(context.Context, *connect.BidiStream[v1.PingStreamRequest, v1.PingStreamResponse]) error {
-	return connect.NewError(connect.CodeUnimplemented, errors.New("authn.ping.v1.PingService.PingStream is not implemented"))
+func (UnimplementedPingServiceHandler) PingStream(context.Context, PingServicePingStreamServerStream) error {
+	return connect.NewError(connect.CodeUnimplemented, "authn.ping.v1.PingService.PingStream is not implemented")
+}
+
+type pingServiceClient struct {
+	client *connect.Client
+}
+
+func (c *pingServiceClient) Ping(ctx context.Context, req *v1.PingRequest) (*v1.PingResponse, error) {
+	var res v1.PingResponse
+	if err := c.client.CallUnary(ctx, pingServicePingSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *pingServiceClient) Echo(ctx context.Context, req *v1.EchoRequest) (*v1.EchoResponse, error) {
+	var res v1.EchoResponse
+	if err := c.client.CallUnary(ctx, pingServiceEchoSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *pingServiceClient) PingStream(ctx context.Context) (PingServicePingStreamClientStream, error) {
+	stream, err := c.client.CallClientStream(ctx, pingServicePingStreamSpec())
+	if err != nil {
+		return PingServicePingStreamClientStream{}, err
+	}
+	return PingServicePingStreamClientStream{stream: stream}, nil
+}
+
+type pingServiceHandler struct{ svc PingServiceHandler }
+
+func (h pingServiceHandler) ping(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.PingRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.Ping(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h pingServiceHandler) echo(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.EchoRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.Echo(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h pingServiceHandler) pingStream(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	return h.svc.PingStream(ctx, PingServicePingStreamServerStream{stream: stream})
 }

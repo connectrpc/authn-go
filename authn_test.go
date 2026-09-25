@@ -23,8 +23,8 @@ import (
 	"strings"
 	"testing"
 
-	"connectrpc.com/authn"
-	"connectrpc.com/connect"
+	"connectrpc.com/authn/v2"
+	"connectrpc.com/connect/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -99,9 +99,7 @@ func assertInfo(ctx context.Context, tb testing.TB) {
 func authenticate(_ context.Context, req *http.Request) (any, error) {
 	token, ok := authn.BearerToken(req)
 	if !ok {
-		err := authn.Errorf("expected Bearer authentication scheme")
-		err.Meta().Set("WWW-Authenticate", "Bearer")
-		return nil, err
+		return nil, authn.Errorf("expected Bearer authentication scheme")
 	}
 	if token != passphrase {
 		return nil, authn.Errorf("%q is not the magic passphrase", token)
@@ -157,42 +155,42 @@ func TestInferProtocol(t *testing.T) {
 		contentType: "application/json",
 		method:      http.MethodPost,
 		params:      nil,
-		want:        connect.ProtocolConnect,
+		want:        connect.ProtocolNameConnect,
 		valid:       true,
 	}, {
 		name:        "connectStreaming",
 		contentType: "application/connec+json",
 		method:      http.MethodPost,
 		params:      nil,
-		want:        connect.ProtocolConnect,
+		want:        connect.ProtocolNameConnect,
 		valid:       true,
 	}, {
 		name:        "grpcWeb",
 		contentType: "application/grpc-web",
 		method:      http.MethodPost,
 		params:      nil,
-		want:        connect.ProtocolGRPCWeb,
+		want:        connect.ProtocolNameGRPCWeb,
 		valid:       true,
 	}, {
 		name:        "grpc",
 		contentType: "application/grpc",
 		method:      http.MethodPost,
 		params:      nil,
-		want:        connect.ProtocolGRPC,
+		want:        connect.ProtocolNameGRPC,
 		valid:       true,
 	}, {
 		name:        "connectGet",
 		contentType: "",
 		method:      http.MethodGet,
 		params:      url.Values{"message": []string{"{}"}, "encoding": []string{"json"}},
-		want:        connect.ProtocolConnect,
+		want:        connect.ProtocolNameConnect,
 		valid:       true,
 	}, {
 		name:        "connectGetProto",
 		contentType: "",
 		method:      http.MethodGet,
 		params:      url.Values{"message": []string{""}, "encoding": []string{"proto"}},
-		want:        connect.ProtocolConnect,
+		want:        connect.ProtocolNameConnect,
 		valid:       true,
 	}, {
 		name:        "connectGetMissingParams",

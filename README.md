@@ -1,10 +1,10 @@
 authn
 =====
 [![Build](https://github.com/connectrpc/authn-go/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/connectrpc/authn-go/actions/workflows/ci.yaml)
-[![GoDoc](https://pkg.go.dev/badge/connectrpc.com/authn.svg)](https://pkg.go.dev/connectrpc.com/authn)
+[![GoDoc](https://pkg.go.dev/badge/connectrpc.com/authn/v2.svg)](https://pkg.go.dev/connectrpc.com/authn/v2)
 [![Slack](https://img.shields.io/badge/slack-buf-%23e01563)][slack]
 
-`connectrpc.com/authn` provides authentication middleware for
+`connectrpc.com/authn/v2` provides authentication middleware for
 [Connect](https://connectrpc.com/). It works with any authentication scheme
 (including HTTP basic authentication, cookies, bearer tokens, and mutual TLS),
 and it's carefully designed to minimize the resource consumption of
@@ -30,8 +30,10 @@ import (
   "crypto/subtle"
   "net/http"
 
-  "connectrpc.com/authn"
-  "connectrpc.com/authn/internal/gen/authn/ping/v1/pingv1connect"
+  "connectrpc.com/authn/v2"
+  "connectrpc.com/authn/v2/internal/gen/authn/ping/v1/pingv1connect"
+  "connectrpc.com/connect/v2"
+  "connectrpc.com/connect/v2/connecthttp"
 )
 
 func authenticate(_ context.Context, req *http.Request) (any, error) {
@@ -54,9 +56,10 @@ func equal(left, right string) bool {
 }
 
 func main() {
+  server := connect.NewServer()
+  pingv1connect.RegisterPingServiceHandler(server, &pingv1connect.UnimplementedPingServiceHandler{})
   mux := http.NewServeMux()
-  service := &pingv1connect.UnimplementedPingServiceHandler{}
-  mux.Handle(pingv1connect.NewPingServiceHandler(service))
+  connecthttp.Mount(mux, server)
 
   middleware := authn.NewMiddleware(authenticate)
   handler := middleware.Wrap(mux)
@@ -101,7 +104,7 @@ Offered under the [Apache 2 license][license].
 [docs]: https://connectrpc.com
 [examples-go]: https://github.com/connectrpc/examples-go
 [go-support-policy]: https://golang.org/doc/devel/release#policy
-[godoc]: https://pkg.go.dev/connectrpc.com/authn
+[godoc]: https://pkg.go.dev/connectrpc.com/authn/v2
 [grpchealth]: https://github.com/connectrpc/grpchealth-go
 [grpcreflect]: https://github.com/connectrpc/grpcreflect-go
 [license]: https://github.com/connectrpc/authn-go/blob/main/LICENSE
