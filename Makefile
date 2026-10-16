@@ -12,7 +12,7 @@ export GOBIN := $(abspath $(BIN))
 COPYRIGHT_YEARS := 2023-2026
 LICENSE_IGNORE := --ignore testdata/ --ignore .github/ --ignore ".*\.ya?ml"
 BUF_VERSION := 1.73.0
-GOLANGCI_LINT_VERSION ?= v2.13.2
+GOLANGCI_LINT_VERSION ?= v2.14.0
 
 .PHONY: help
 help: ## Describe useful make targets
