@@ -134,10 +134,14 @@ func InferProcedure(url *url.URL) (string, bool) {
 // BearerToken returns the bearer token provided in the request's Authorization
 // header, if any.
 func BearerToken(request *http.Request) (string, bool) {
-	return parseBearerToken(request.Header.Get("Authorization"))
+	return BearerTokenFromHeader(request.Header)
 }
 
-func parseBearerToken(auth string) (string, bool) {
+// BearerTokenFromHeader returns the bearer token provided in the Authorization
+// header, if any. The header is a set of request headers, such as
+// [connect.CallInfo.RequestHeader] or an [net/http.Header].
+func BearerTokenFromHeader(header interface{ Get(key string) string }) (string, bool) {
+	auth := header.Get("Authorization")
 	const prefix = "Bearer "
 	// Case insensitive prefix match. See RFC 9110 Section 11.1.
 	if len(auth) < len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {

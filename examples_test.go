@@ -31,12 +31,14 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"time"
 
 	"connectrpc.com/authn"
 	pingv1 "connectrpc.com/authn/internal/gen/authn/ping/v1"
 	"connectrpc.com/authn/internal/gen/authn/ping/v1/pingv1connect"
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 )
 
 func Example_basicAuth() {
@@ -44,42 +46,42 @@ func Example_basicAuth() {
 	// Any header-based authentication (including cookies and bearer tokens)
 	// works similarly.
 
-	// First, we define our authentication logic and use it to build middleware.
-	authenticate := func(_ context.Context, req *http.Request) (any, error) {
-		username, password, ok := req.BasicAuth()
+	// First, we define our authentication logic and use it to build an
+	// interceptor.
+	authenticate := func(_ context.Context, info *connect.CallInfo) (any, error) {
+		username, password, ok := basicAuth(info.RequestHeader())
 		if !ok {
-			return nil, authn.Errorf("invalid authorization")
+			return nil, connect.Errorf(connect.CodeUnauthenticated, "invalid authorization")
 		}
 		if !equal(password, "open-sesame") {
-			return nil, authn.Errorf("invalid password")
+			return nil, connect.Errorf(connect.CodeUnauthenticated, "invalid password")
 		}
 		// The request is authenticated! We can propagate the authenticated user to
-		// Connect interceptors and services by returning it: the middleware we're
+		// later interceptors and services by returning it: the interceptor we're
 		// about to construct will attach it to the context automatically.
 		fmt.Println("authenticated request from", username)
 		return username, nil
 	}
-	middleware := authn.NewMiddleware(authenticate)
+	interceptor := authn.NewServerInterceptor(authenticate)
 
-	// Next, we build our Connect handler.
+	// Next, we build our Connect server with the interceptor and start it.
+	server := connect.NewServer(interceptor)
+	pingv1connect.RegisterPingServiceHandler(server, &pingHandler{})
 	mux := http.NewServeMux()
-	service := &pingHandler{}
-	mux.Handle(pingv1connect.NewPingServiceHandler(service))
-
-	// Finally, we wrap the handler with our middleware and start our server.
-	handler := middleware.Wrap(mux)
-	server := httptest.NewServer(handler)
-	defer server.Close()
+	connecthttp.Mount(mux, server)
+	httpServer := httptest.NewServer(mux)
+	defer httpServer.Close()
 
 	// Clients authenticate by setting the standard Authorization header.
-	client := pingv1connect.NewPingServiceClient(http.DefaultClient, server.URL)
-	req := connect.NewRequest(&pingv1.PingRequest{})
-	req.Header().Set(
+	client := pingv1connect.NewPingServiceClient(connect.NewClient(
+		connecthttp.NewTransport(http.DefaultClient, httpServer.URL),
+	))
+	ctx, callInfo := connect.NewClientContext(context.Background())
+	callInfo.RequestHeader().Set(
 		"Authorization",
 		"Basic "+base64.StdEncoding.EncodeToString([]byte("Aladdin:open-sesame")),
 	)
-	_, err := client.Ping(context.Background(), req)
-	if err != nil {
+	if _, err := client.Ping(ctx, &pingv1.PingRequest{}); err != nil {
 		fmt.Printf("unexpected error: %v\n", err)
 		return
 	}
@@ -107,12 +109,12 @@ func Example_bearerToken() {
 		"open-sesame": "Aladdin",
 	}
 
-	// First, we define our authentication logic and use it to build middleware.
-	authenticate := func(_ context.Context, req *http.Request) (any, error) {
-		// Infer the procedure from the request URL.
-		procedure, _ := authn.InferProcedure(req.URL)
+	// First, we define our authentication logic and use it to build an
+	// interceptor.
+	authenticate := func(_ context.Context, info *connect.CallInfo) (any, error) {
+		procedure := info.Spec.Procedure
 		// Extract the bearer token from the Authorization header.
-		token, ok := authn.BearerToken(req)
+		token, ok := authn.BearerTokenFromHeader(info.RequestHeader())
 		if !ok {
 			// We'll allow unauthenticated access to the ping procedure.
 			if _, ok := allowList[procedure]; ok {
@@ -120,53 +122,54 @@ func Example_bearerToken() {
 				return nil, nil // no authentication required
 			}
 			fmt.Println("authentication required for", procedure)
-			err := authn.Errorf("invalid authorization")
-			err.Meta().Set("WWW-Authenticate", "Bearer")
-			return nil, err
+			info.ResponseHeader().Set("WWW-Authenticate", "Bearer")
+			return nil, connect.Errorf(connect.CodeUnauthenticated, "invalid authorization")
 		}
 		user, ok := tokenToUser[token]
 		if !ok {
-			return nil, authn.Errorf("invalid token")
+			return nil, connect.Errorf(connect.CodeUnauthenticated, "invalid token")
 		}
 		// The request is authenticated!
 		fmt.Println("authenticated request from", user, "for", procedure)
 		return user, nil
 	}
-	middleware := authn.NewMiddleware(authenticate)
+	interceptor := authn.NewServerInterceptor(authenticate)
 
-	// Next, we build our Connect handler.
+	// Next, we build our Connect server with the interceptor and start it.
+	server := connect.NewServer(interceptor)
+	pingv1connect.RegisterPingServiceHandler(server, &pingHandler{})
 	mux := http.NewServeMux()
-	service := &pingHandler{}
-	mux.Handle(pingv1connect.NewPingServiceHandler(service))
-
-	// Finally, we wrap the handler with our middleware and start our server.
-	handler := middleware.Wrap(mux)
-	server := httptest.NewServer(handler)
-	defer server.Close()
+	connecthttp.Mount(mux, server)
+	httpServer := httptest.NewServer(mux)
+	defer httpServer.Close()
 
 	// Create an unauthenticated call to the ping procedure.
-	client := pingv1connect.NewPingServiceClient(http.DefaultClient, server.URL)
-	if _, err := client.Ping(context.Background(), connect.NewRequest(
+	client := pingv1connect.NewPingServiceClient(connect.NewClient(
+		connecthttp.NewTransport(http.DefaultClient, httpServer.URL),
+	))
+	if _, err := client.Ping(
+		context.Background(),
 		&pingv1.PingRequest{Text: "hello"},
-	)); err != nil {
+	); err != nil {
 		fmt.Printf("unexpected error: %v\n", err)
 		return
 	}
 	fmt.Println("client received response")
 
 	// Create an unauthenticated call to the echo procedure.
-	if _, err := client.Echo(context.Background(), connect.NewRequest(
+	if _, err := client.Echo(
+		context.Background(),
 		&pingv1.EchoRequest{Text: "hello"},
-	)); connect.CodeOf(err) != connect.CodeUnauthenticated {
+	); connect.CodeOf(err) != connect.CodeUnauthenticated {
 		fmt.Printf("unexpected error: %v\n", err)
 		return
 	}
 	fmt.Println("client unauthorized")
 
 	// Create an authenticated call to the echo procedure.
-	req := connect.NewRequest(&pingv1.EchoRequest{Text: "hello"})
-	req.Header().Set("Authorization", "Bearer open-sesame")
-	if _, err := client.Echo(context.Background(), req); err != nil {
+	ctx, callInfo := connect.NewClientContext(context.Background())
+	callInfo.RequestHeader().Set("Authorization", "Bearer open-sesame")
+	if _, err := client.Echo(ctx, &pingv1.EchoRequest{Text: "hello"}); err != nil {
 		fmt.Printf("unexpected error: %v\n", err)
 		return
 	}
@@ -183,56 +186,57 @@ func Example_bearerToken() {
 
 func Example_mutualTLS() {
 	// This example shows how to use this package with mutual TLS.
-	// First, we define our authentication logic and use it to build middleware.
-	authenticate := func(_ context.Context, req *http.Request) (any, error) {
-		tls := req.TLS
+	// First, we define our authentication logic and use it to build an
+	// interceptor.
+	authenticate := func(ctx context.Context, _ *connect.CallInfo) (any, error) {
+		serverInfo, _ := connecthttp.ServerInfoForContext(ctx)
+		tls := serverInfo.TLS()
 		if tls == nil {
-			return nil, authn.Errorf("TLS required")
+			return nil, connect.Errorf(connect.CodeUnauthenticated, "TLS required")
 		}
 		if len(tls.VerifiedChains) == 0 || len(tls.VerifiedChains[0]) == 0 {
-			return nil, authn.Errorf("could not verify peer certificate")
+			return nil, connect.Errorf(connect.CodeUnauthenticated, "could not verify peer certificate")
 		}
 		name := tls.VerifiedChains[0][0].Subject.CommonName
 		if !equal(name, "Aladdin") { // hardcode example credentials
-			return nil, authn.Errorf("invalid subject common name %q", name)
+			return nil, connect.Errorf(connect.CodeUnauthenticated, "invalid subject common name %q", name)
 		}
 		// The request is authenticated! We can propagate the authenticated user to
-		// Connect interceptors and services by returning it: the middleware we're
+		// later interceptors and services by returning it: the interceptor we're
 		// about to construct will attach it to the context automatically.
 		fmt.Println("authenticated request from", name)
 		return name, nil
 	}
-	middleware := authn.NewMiddleware(authenticate)
+	interceptor := authn.NewServerInterceptor(authenticate)
 
-	// Next, we build our Connect handler.
+	// Next, we build our Connect server with the interceptor.
+	server := connect.NewServer(interceptor)
+	pingv1connect.RegisterPingServiceHandler(server, &pingv1connect.UnimplementedPingServiceHandler{})
 	mux := http.NewServeMux()
-	service := &pingv1connect.UnimplementedPingServiceHandler{}
-	mux.Handle(pingv1connect.NewPingServiceHandler(service))
+	connecthttp.Mount(mux, server)
 
-	// Finally, we wrap the handler with our middleware and start the server.
-	// Creating server and client TLS configurations is particularly verbose in
-	// examples, where we need to set up a complete self-signed chain of trust.
+	// Finally, we start the server. Creating server and client TLS
+	// configurations is particularly verbose in examples, where we need to set
+	// up a complete self-signed chain of trust.
 	clientTLS, serverTLS, err := newTLSConfigs("Aladdin", "Cave of Wonders")
 	if err != nil {
 		fmt.Printf("error creating TLS configs: %v\n", err)
 		return
 	}
-	handler := middleware.Wrap(mux)
-	server := httptest.NewUnstartedServer(handler)
-	server.TLS = serverTLS
-	server.StartTLS()
-	defer server.Close()
+	httpServer := httptest.NewUnstartedServer(mux)
+	httpServer.TLS = serverTLS
+	httpServer.StartTLS()
+	defer httpServer.Close()
 
 	// Clients must configure their underlying HTTP clients to present a valid
 	// certificate.
 	httpClient := &http.Client{
 		Transport: &http.Transport{TLSClientConfig: clientTLS},
 	}
-	client := pingv1connect.NewPingServiceClient(httpClient, server.URL)
-	_, err = client.Ping(
-		context.Background(),
-		connect.NewRequest(&pingv1.PingRequest{}),
-	)
+	client := pingv1connect.NewPingServiceClient(connect.NewClient(
+		connecthttp.NewTransport(httpClient, httpServer.URL),
+	))
+	_, err = client.Ping(context.Background(), &pingv1.PingRequest{})
 
 	// We're using the UnimplementedPingServiceHandler stub, so authenticated
 	// clients should receive an error with CodeUnimplemented.
@@ -358,6 +362,21 @@ func newCertificate(caCertPEM, caKeyPEM []byte, commonName string) (tls.Certific
 	return tls.X509KeyPair(certPEM, certPrivKeyPEM)
 }
 
+// basicAuth parses the username and password from an HTTP basic
+// Authorization header.
+func basicAuth(header *connect.Header) (username, password string, ok bool) {
+	const prefix = "Basic "
+	auth := header.Get("Authorization")
+	if len(auth) < len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {
+		return "", "", false
+	}
+	decoded, err := base64.StdEncoding.DecodeString(auth[len(prefix):])
+	if err != nil {
+		return "", "", false
+	}
+	return strings.Cut(string(decoded), ":")
+}
+
 func equal(left, right string) bool {
 	// Using subtle prevents some timing attacks.
 	return subtle.ConstantTimeCompare([]byte(left), []byte(right)) == 1
@@ -367,15 +386,15 @@ type pingHandler struct {
 	pingv1connect.UnimplementedPingServiceHandler
 }
 
-func (pingHandler) Ping(_ context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
-	return connect.NewResponse(&pingv1.PingResponse{Text: req.Msg.Text}), nil
+func (pingHandler) Ping(_ context.Context, req *pingv1.PingRequest) (*pingv1.PingResponse, error) {
+	return &pingv1.PingResponse{Text: req.GetText()}, nil
 }
 
-func (pingHandler) Echo(_ context.Context, req *connect.Request[pingv1.EchoRequest]) (*connect.Response[pingv1.EchoResponse], error) {
-	return connect.NewResponse(&pingv1.EchoResponse{Text: req.Msg.Text}), nil
+func (pingHandler) Echo(_ context.Context, req *pingv1.EchoRequest) (*pingv1.EchoResponse, error) {
+	return &pingv1.EchoResponse{Text: req.GetText()}, nil
 }
 
-func (pingHandler) PingStream(_ context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
+func (pingHandler) PingStream(_ context.Context, stream pingv1connect.PingServicePingStreamServerStream) error {
 	for {
 		req, err := stream.Receive()
 		if err != nil {
@@ -384,7 +403,7 @@ func (pingHandler) PingStream(_ context.Context, stream *connect.BidiStream[ping
 			}
 			return err
 		}
-		if err := stream.Send(&pingv1.PingStreamResponse{Text: req.Text}); err != nil {
+		if err := stream.Send(&pingv1.PingStreamResponse{Text: req.GetText()}); err != nil {
 			return err
 		}
 	}

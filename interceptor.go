@@ -53,11 +53,3 @@ func NewServerInterceptor(auth InterceptorAuthFunc) connect.ServerInterceptor {
 		}
 	}
 }
-
-// BearerTokenFromHeader returns the bearer token provided in the Authorization
-// header, if any. On a server, pass [connect.CallInfo.RequestHeader].
-//
-// For an [http.Request], use [BearerToken].
-func BearerTokenFromHeader(header *connect.Header) (string, bool) {
-	return parseBearerToken(header.Get("Authorization"))
-}
