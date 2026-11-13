@@ -25,8 +25,12 @@ import (
 
 	"connectrpc.com/authn"
 	"connectrpc.com/connect"
+	connectv2 "connectrpc.com/connect/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 const (
@@ -80,6 +84,72 @@ func TestMiddleware(t *testing.T) {
 		},
 		http.StatusOK,
 	)
+}
+
+func TestMiddlewareV2Error(t *testing.T) {
+	t.Parallel()
+	handler := authn.NewMiddleware(func(context.Context, *http.Request) (any, error) {
+		detail, err := proto.Marshal(wrapperspb.String("detail"))
+		if err != nil {
+			return nil, err
+		}
+		return nil, connectv2.Errorf(connectv2.CodeUnauthenticated, "v2 error").WithDetail(&connectv2.ErrorDetail{
+			Type:  "google.protobuf.StringValue",
+			Value: detail,
+			Debug: nil,
+		})
+	}).Wrap(http.NotFoundHandler())
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		"/empty.v1/GetEmpty",
+		strings.NewReader("{}"),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	assert.Equal(t, http.StatusUnauthorized, res.Code)
+	assert.Contains(t, res.Body.String(), "v2 error")
+	assert.Contains(t, res.Body.String(), `"type":"google.protobuf.StringValue"`)
+}
+
+func TestMiddlewareConnect(t *testing.T) {
+	t.Parallel()
+	const procedure = "/empty.v1.EmptyService/GetEmpty"
+	mux := http.NewServeMux()
+	mux.Handle(procedure, connect.NewUnaryHandler(
+		procedure,
+		func(ctx context.Context, _ *connect.Request[emptypb.Empty]) (*connect.Response[emptypb.Empty], error) {
+			assertInfo(ctx, t)
+			return connect.NewResponse(&emptypb.Empty{}), nil
+		},
+	))
+	server := httptest.NewUnstartedServer(authn.NewMiddleware(authenticate).Wrap(mux))
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	t.Cleanup(server.Close)
+
+	protocols := map[string][]connect.ClientOption{
+		"connect":  nil,
+		"grpc":     {connect.WithGRPC()},
+		"grpc_web": {connect.WithGRPCWeb()},
+	}
+	for name, opts := range protocols {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			client := connect.NewClient[emptypb.Empty, emptypb.Empty](
+				server.Client(),
+				server.URL+procedure,
+				opts...,
+			)
+			_, err := client.CallUnary(t.Context(), connect.NewRequest(&emptypb.Empty{}))
+			assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+			req := connect.NewRequest(&emptypb.Empty{})
+			req.Header().Set("Authorization", "Bearer "+passphrase)
+			_, err = client.CallUnary(t.Context(), req)
+			assert.NoError(t, err)
+		})
+	}
 }
 
 func assertInfo(ctx context.Context, tb testing.TB) {

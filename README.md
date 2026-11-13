@@ -20,7 +20,8 @@ on [connectrpc.com][docs] (especially the [Getting Started] guide for Go), the
 Curious what all this looks like in practice? From a [Protobuf
 schema](internal/proto/authn/ping/v1/ping.proto), we generate [a small RPC
 package](internal/gen/authn/ping/v1/pingv1connect/ping.connect.go). Using that
-package, we can build a server and wrap it with some basic authentication:
+package, we can build a connect-go v2 server and protect it with bearer token
+authentication:
 
 ```go
 package main
@@ -32,20 +33,22 @@ import (
 
   "connectrpc.com/authn"
   "connectrpc.com/authn/internal/gen/authn/ping/v1/pingv1connect"
+  "connectrpc.com/connect/v2"
+  "connectrpc.com/connect/v2/connecthttp"
 )
 
-func authenticate(_ context.Context, req *http.Request) (any, error) {
-  username, password, ok := req.BasicAuth()
+func authenticate(_ context.Context, info *connect.CallInfo) (any, error) {
+  token, ok := authn.BearerTokenFromHeader(info.RequestHeader())
   if !ok {
-    return nil, authn.Errorf("invalid authorization")
+    return nil, connect.Errorf(connect.CodeUnauthenticated, "invalid authorization")
   }
-  if !equal(password, "open-sesame") {
-    return nil, authn.Errorf("invalid password")
+  if !equal(token, "open-sesame") {
+    return nil, connect.Errorf(connect.CodeUnauthenticated, "invalid token")
   }
   // The request is authenticated! We can propagate the authenticated user to
-  // Connect interceptors and services by returning it: the middleware we're
+  // later interceptors and services by returning it: the interceptor we're
   // about to construct will attach it to the context automatically.
-  return username, nil
+  return "Aladdin", nil
 }
 
 func equal(left, right string) bool {
@@ -54,18 +57,20 @@ func equal(left, right string) bool {
 }
 
 func main() {
+  server := connect.NewServer(authn.NewServerInterceptor(authenticate))
+  pingv1connect.RegisterPingServiceHandler(server, &pingv1connect.UnimplementedPingServiceHandler{})
   mux := http.NewServeMux()
-  service := &pingv1connect.UnimplementedPingServiceHandler{}
-  mux.Handle(pingv1connect.NewPingServiceHandler(service))
-
-  middleware := authn.NewMiddleware(authenticate)
-  handler := middleware.Wrap(mux)
-  http.ListenAndServe("localhost:8080", handler)
+  connecthttp.Mount(mux, server)
+  http.ListenAndServe("localhost:8080", mux)
 }
 ```
 
-Cookie and token-based authentication is similar. Mutual TLS is a bit more
-complex, but [pkg.go.dev][godoc] includes a complete example.
+Cookie and basic authentication is similar. Mutual TLS is a bit more
+complex, but [pkg.go.dev][godoc] includes a complete example. For connect-go
+v1, wrap the HTTP handler with `authn.NewMiddleware` instead.
+
+The interceptor only authenticates RPCs that reach the Connect server. To
+authenticate every request on the mux, wrap it with `authn.NewMiddleware`.
 
 ## Ecosystem
 

@@ -17,6 +17,7 @@ package authn
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"mime"
 	"net/http"
@@ -24,6 +25,8 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
+	connectv2 "connectrpc.com/connect/v2"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 type key int
@@ -32,7 +35,7 @@ const infoKey key = iota
 
 // An AuthFunc authenticates an RPC. The function must return an error if the
 // request cannot be authenticated. The error is typically produced with
-// [Errorf], but any error will do.
+// [Errorf], but any error will do. Connect-go v2 errors are converted.
 //
 // If requests are successfully authenticated, the authentication function may
 // return some information about the authenticated caller (or nil). If non-nil,
@@ -134,8 +137,15 @@ func InferProcedure(url *url.URL) (string, bool) {
 // BearerToken returns the bearer token provided in the request's Authorization
 // header, if any.
 func BearerToken(request *http.Request) (string, bool) {
+	return BearerTokenFromHeader(request.Header)
+}
+
+// BearerTokenFromHeader returns the bearer token provided in the Authorization
+// header, if any. The header is a set of request headers, such as
+// [connect.CallInfo.RequestHeader] or an [net/http.Header].
+func BearerTokenFromHeader(header interface{ Get(key string) string }) (string, bool) {
+	auth := header.Get("Authorization")
 	const prefix = "Bearer "
-	auth := request.Header.Get("Authorization")
 	// Case insensitive prefix match. See RFC 9110 Section 11.1.
 	if len(auth) < len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {
 		return "", false
@@ -176,7 +186,7 @@ func (m *Middleware) Wrap(handler http.Handler) http.Handler {
 		ctx := request.Context()
 		info, err := m.auth(ctx, request)
 		if err != nil {
-			_ = m.errW.Write(writer, request, err)
+			_ = m.errW.Write(writer, request, asV1Error(err))
 			return
 		}
 		if info != nil {
@@ -185,6 +195,33 @@ func (m *Middleware) Wrap(handler http.Handler) http.Handler {
 		}
 		handler.ServeHTTP(writer, request)
 	})
+}
+
+// asV1Error converts a connect-go v2 error to v1.
+func asV1Error(err error) error {
+	if _, ok := errors.AsType[*connect.Error](err); ok {
+		return err
+	}
+	v2Err, ok := errors.AsType[*connectv2.Error](err)
+	if !ok {
+		return err
+	}
+	var cause error
+	if msg := v2Err.Message(); msg != "" {
+		cause = errors.New(msg)
+	}
+	v1Err := connect.NewError(connect.Code(v2Err.Code()), cause)
+	for _, detail := range v2Err.Details() {
+		v1Detail, err := connect.NewErrorDetail(&anypb.Any{
+			TypeUrl: "type.googleapis.com/" + detail.Type,
+			Value:   detail.Value,
+		})
+		if err != nil {
+			continue
+		}
+		v1Err.AddDetail(v1Detail)
+	}
+	return v1Err
 }
 
 func canonicalizeContentType(contentType string) string {
