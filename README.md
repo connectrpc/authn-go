@@ -69,6 +69,9 @@ Cookie and basic authentication is similar. Mutual TLS is a bit more
 complex, but [pkg.go.dev][godoc] includes a complete example. For connect-go
 v1, wrap the HTTP handler with `authn.NewMiddleware` instead.
 
+The interceptor only authenticates RPCs that reach the Connect server. To
+authenticate every request on the mux, wrap it with `authn.NewMiddleware`.
+
 ## Ecosystem
 
 * [connect-go]: the Go implementation of Connect's RPC runtime
